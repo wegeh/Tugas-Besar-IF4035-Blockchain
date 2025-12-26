@@ -18,10 +18,10 @@ const chartData = [
 
 export function OverviewTab() {
   const [account, setAccount] = useState<string>("")
-  const [speBalance, setSpeBalance] = useState<string>("0")
-  const [speTotal, setSpeTotal] = useState<string>("0")
-  const [ptbaeUsed, setPtbaeUsed] = useState<string>("0")
-  const [ptbaeTotal, setPtbaeTotal] = useState<string>("0")
+  const [speBalance, setSpeBalance] = useState<number | undefined>(undefined)
+  const [speTotal, setSpeTotal] = useState<number | undefined>(undefined)
+  const [ptbaeUsed, setPtbaeUsed] = useState<number | undefined>(undefined)
+  const [ptbaeTotal, setPtbaeTotal] = useState<number | undefined>(undefined)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string>("")
 
@@ -31,12 +31,13 @@ export function OverviewTab() {
       setLoading(true)
       setError("")
       try {
-        // Resolve account (MetaMask if available, else fallback to deployer)
+        // Resolve account (use connected wallet if present, otherwise fallback to deployer)
         let addr = addresses.SPEGRKToken?.initialHolder || ""
         if (typeof window !== "undefined" && (window as any).ethereum) {
-          const provider = new (await import("ethers")).BrowserProvider((window as any).ethereum)
-          await provider.send("eth_requestAccounts", [])
-          addr = await provider.getSigner().getAddress()
+          const accounts = await (window as any).ethereum.request?.({ method: "eth_accounts" })
+          if (accounts && accounts.length > 0) {
+            addr = accounts[0]
+          }
         }
         if (!addr) throw new Error("No account available. Connect a wallet.")
 
@@ -46,10 +47,10 @@ export function OverviewTab() {
 
         if (cancelled) return
         setAccount(addr)
-        setSpeBalance(spe.balance)
-        setSpeTotal(spe.supply)
-        setPtbaeUsed(comp.surrendered)
-        setPtbaeTotal(comp.balance)
+        setSpeBalance(Number(spe.balance))
+        setSpeTotal(Number(spe.supply))
+        setPtbaeUsed(Number(comp.surrendered))
+        setPtbaeTotal(Number(comp.balance))
       } catch (err: any) {
         if (!cancelled) setError(err?.message || "Failed to load balances")
       } finally {
@@ -62,9 +63,9 @@ export function OverviewTab() {
     }
   }, [])
 
-  const speDisplayBalance = loading ? "Loading..." : speBalance
-  const ptbaeUsedDisplay = loading ? "Loading..." : ptbaeUsed
-  const ptbaeTotalDisplay = loading ? "Loading..." : ptbaeTotal
+  const speDisplayBalance = loading ? undefined : speBalance
+  const ptbaeUsedDisplay = loading ? undefined : ptbaeUsed
+  const ptbaeTotalDisplay = loading ? undefined : ptbaeTotal
 
   return (
     <div className="space-y-8">
