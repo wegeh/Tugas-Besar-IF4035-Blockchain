@@ -3,7 +3,8 @@ import { NextResponse } from "next/server"
 import { verifyAuthToken } from "@/lib/jwt"
 
 export async function GET() {
-  const token = cookies().get("cl_session")?.value
+  const cookieStore = await cookies()
+  const token = cookieStore.get("cl_session")?.value
   if (!token) {
     return NextResponse.json({ user: null }, { status: 200 })
   }

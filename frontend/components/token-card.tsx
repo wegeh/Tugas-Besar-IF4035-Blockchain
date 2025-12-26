@@ -5,11 +5,13 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowUpRight, Send, History } from "lucide-react"
 import { toast } from "sonner"
+import { useContractActions } from "@/hooks/use-contract-actions"
 
 interface TokenCardProps {
   title: string
   type: string
   quantity?: number
+  tokenId?: number
   vintage?: string
   projectId?: string
   used?: number
@@ -23,6 +25,7 @@ export function TokenCard({
   title,
   type,
   quantity,
+  tokenId,
   vintage,
   projectId,
   used,
@@ -32,6 +35,7 @@ export function TokenCard({
   isAllowance,
 }: TokenCardProps) {
   const [isFlipped, setIsFlipped] = useState(false)
+  const { transferSPE, retireSPE, transferPTBAE, surrenderPTBAE, state } = useContractActions()
 
   const badgeColors = {
     emerald: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
@@ -41,11 +45,45 @@ export function TokenCard({
   const actionPrimaryLabel = isAllowance ? "Transfer" : "Transfer"
   const actionSecondaryLabel = isAllowance ? "Surrender" : "Retire"
 
-  const handleAction = (e: React.MouseEvent, action: string) => {
+  const handleTransfer = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    toast.info(`${action} action coming soon`, {
-      description: "Wire this to your smart contract/API once deployed.",
-    })
+    const to = window.prompt("Destination address?")
+    if (!to) return
+    const amountStr = window.prompt("Amount?")
+    if (!amountStr) return
+    const amount = BigInt(amountStr)
+    try {
+      if (isAllowance) {
+        await transferPTBAE(to, amount)
+      } else {
+        const id = tokenId ?? Number(window.prompt("Token ID?", "1"))
+        await transferSPE(id, to, amount)
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Transfer failed")
+    }
+  }
+
+  const handleSecondary = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const amountStr = window.prompt("Amount?")
+    if (!amountStr) return
+    const amount = BigInt(amountStr)
+    try {
+      if (isAllowance) {
+        await surrenderPTBAE(amount)
+      } else {
+        const id = tokenId ?? Number(window.prompt("Token ID?", "1"))
+        await retireSPE(id, amount)
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Action failed")
+    }
+  }
+
+  const handleHistory = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    toast.info("History view not implemented yet.")
   }
 
   return (
@@ -128,16 +166,18 @@ export function TokenCard({
             <h4 className="font-semibold mb-4">Quick Actions</h4>
             <Button
               size="sm"
+              disabled={state === "pending"}
               className="w-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30"
-              onClick={(e) => handleAction(e, actionPrimaryLabel)}
+              onClick={handleTransfer}
             >
               <Send className="w-4 h-4 mr-2" />
               {actionPrimaryLabel}
             </Button>
             <Button
               size="sm"
+              disabled={state === "pending"}
               className="w-full bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30"
-              onClick={(e) => handleAction(e, actionSecondaryLabel)}
+              onClick={handleSecondary}
             >
               <ArrowUpRight className="w-4 h-4 mr-2" />
               {actionSecondaryLabel}
@@ -145,8 +185,9 @@ export function TokenCard({
             <Button
               size="sm"
               variant="outline"
+              disabled={state === "pending"}
               className="w-full border-white/20 hover:bg-white/5 bg-transparent"
-              onClick={(e) => handleAction(e, "History")}
+              onClick={handleHistory}
             >
               <History className="w-4 h-4 mr-2" />
               History

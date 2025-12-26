@@ -1,8 +1,11 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { TokenCard } from "@/components/token-card"
 import { Card } from "@/components/ui/card"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { getCompliance, getSpeSnapshot } from "@/lib/reads"
+import addresses from "@/abi/addresses.local.json"
 
 const chartData = [
   { month: "Jan", emissions: 4200, offsets: 2400 },
@@ -14,11 +17,63 @@ const chartData = [
 ]
 
 export function OverviewTab() {
+  const [account, setAccount] = useState<string>("")
+  const [speBalance, setSpeBalance] = useState<string>("0")
+  const [speTotal, setSpeTotal] = useState<string>("0")
+  const [ptbaeUsed, setPtbaeUsed] = useState<string>("0")
+  const [ptbaeTotal, setPtbaeTotal] = useState<string>("0")
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string>("")
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError("")
+      try {
+        // Resolve account (MetaMask if available, else fallback to deployer)
+        let addr = addresses.SPEGRKToken?.initialHolder || ""
+        if (typeof window !== "undefined" && (window as any).ethereum) {
+          const provider = new (await import("ethers")).BrowserProvider((window as any).ethereum)
+          await provider.send("eth_requestAccounts", [])
+          addr = await provider.getSigner().getAddress()
+        }
+        if (!addr) throw new Error("No account available. Connect a wallet.")
+
+        const tokenId = 1
+        const spe = await getSpeSnapshot(tokenId, addr)
+        const comp = await getCompliance(addr)
+
+        if (cancelled) return
+        setAccount(addr)
+        setSpeBalance(spe.balance)
+        setSpeTotal(spe.supply)
+        setPtbaeUsed(comp.surrendered)
+        setPtbaeTotal(comp.balance)
+      } catch (err: any) {
+        if (!cancelled) setError(err?.message || "Failed to load balances")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const speDisplayBalance = loading ? "Loading..." : speBalance
+  const ptbaeUsedDisplay = loading ? "Loading..." : ptbaeUsed
+  const ptbaeTotalDisplay = loading ? "Loading..." : ptbaeTotal
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-4xl font-bold mb-2">Welcome back!</h1>
-        <p className="text-foreground/60">PT. Energy TBK - Active Carbon Account</p>
+        <p className="text-foreground/60">
+          Active account: {account ? account : "No wallet connected"}
+          {error && <span className="text-red-400 ml-2">({error})</span>}
+        </p>
       </div>
 
       {/* Token Cards */}
@@ -26,7 +81,8 @@ export function OverviewTab() {
         <TokenCard
           title="SPE-GRK Credits"
           type="ERC-1155"
-          quantity={12450}
+          quantity={speDisplayBalance}
+          tokenId={1}
           vintage="2024"
           projectId="PRJ-2024-001"
           badge="Verified"
@@ -35,8 +91,9 @@ export function OverviewTab() {
         <TokenCard
           title="PTBAE-PU Allowance"
           type="ERC-20"
-          used={7500}
-          total={10000}
+          used={ptbaeUsedDisplay}
+          total={ptbaeTotalDisplay}
+          tokenId={1}
           badge="Active"
           badgeColor="cyan"
           isAllowance
