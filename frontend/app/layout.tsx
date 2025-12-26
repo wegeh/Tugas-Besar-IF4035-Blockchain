@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { LivingBackground } from "@/components/living-background"
 import { Navbar } from "@/components/navbar"
+import { AppProviders } from "@/components/providers/app-providers"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -39,10 +40,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} font-sans antialiased bg-background text-foreground`}>
-        <LivingBackground />
-        <Navbar />
-        <main className="relative z-10">{children}</main>
-        <Analytics />
+        <AppProviders>
+          <LivingBackground />
+          <Navbar />
+          <main className="relative z-10">{children}</main>
+          <Analytics />
+        </AppProviders>
       </body>
     </html>
   )

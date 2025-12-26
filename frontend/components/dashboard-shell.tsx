@@ -42,7 +42,7 @@ export function DashboardShell({ children, activeTab, setActiveTab }: DashboardS
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition cursor-pointer ${
                     activeTab === item.id
                       ? "bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 text-emerald-400"
                       : "text-foreground/70 hover:text-foreground hover:bg-white/5"
@@ -57,7 +57,7 @@ export function DashboardShell({ children, activeTab, setActiveTab }: DashboardS
 
           {/* Logout */}
           <div className="border-t border-white/10 pt-4">
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-foreground/70 hover:text-foreground hover:bg-white/5 transition">
+            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-foreground/70 hover:text-foreground hover:bg-white/5 transition cursor-pointer">
               <LogOut className="w-5 h-5 flex-shrink-0" />
               {sidebarOpen && <span className="text-sm font-medium">Logout</span>}
             </button>

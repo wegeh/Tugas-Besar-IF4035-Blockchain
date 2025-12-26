@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CarbonLedgerID Frontend
 
-## Getting Started
+Next.js app with a simple role-based auth flow wired to Prisma. Use this as a simulation layer until you plug in the real wallet and network.
 
-First, run the development server:
+## Setup
+1) Copy envs: `cp .env.example .env.local` and set `DATABASE_URL` to your Supabase PostgreSQL URL.  
+2) Install deps: `npm install` (already run once, but rerun if needed).  
+3) Generate client and push schema: `npx prisma generate && npx prisma db push`.  
+4) Dev server: `npm run dev` (http://localhost:3000).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Auth API
+- `POST /api/auth/register`  
+  Body: `{ email, password, role: "company" | "regulator", companyName?, walletAddress? }`  
+  Company accounts require `companyName` and `walletAddress`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- `POST /api/auth/login`  
+  Body: `{ email, password }`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Responses include `{ message, user }` or `{ error }`. This is a basic email/password flow using bcrypt; add proper session/JWT handling if you need persistent login.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## What is simulated vs. real
+- Wallet connect is simulated via the company sign-in/register button; it stores the wallet address in the database but does not perform a chain signature yet.  
+- Dashboard buttons are wired visually; connect them to your real contract calls once your Hardhat deploy + ABIs are ready.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Cursor + UX tweaks
+All buttons now use `cursor-pointer`, the navbar exposes a visible `Sign In` entry, and the hero section links directly to `/dashboard` and `/auth`.

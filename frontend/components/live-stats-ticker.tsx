@@ -9,8 +9,8 @@ interface Stat {
 }
 
 export function LiveStatsTicker() {
-  const [stats, setStats] = useState<Stat[]>([
-    { label: "Total Carbon Retired", value: "2,847,392", unit: "tons CO₂e" },
+  const [stats] = useState<Stat[]>([
+    { label: "Total Carbon Retired", value: "2,847,392", unit: "tons CO2e" },
     { label: "Active Projects", value: "156", unit: "verified projects" },
     { label: "Current Carbon Price", value: "$24.50", unit: "per ton" },
   ])

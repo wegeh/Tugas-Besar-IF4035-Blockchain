@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useRef } from "react"
 import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -44,18 +45,19 @@ export function HeroSection() {
 
           <div className="flex flex-col sm:flex-row gap-4">
             <Button
+              asChild
               size="lg"
               className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white glow-green group relative overflow-hidden"
             >
-              <span className="relative z-10 flex items-center gap-2">
-                Explore Dashboard
-                <ArrowRight className="w-5 h-5" />
-              </span>
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-300 shimmer"></div>
+              <Link href="/dashboard" className="flex items-center gap-2">
+                <span className="relative z-10">Explore Dashboard</span>
+                <ArrowRight className="w-5 h-5 relative z-10" />
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-300 shimmer"></div>
+              </Link>
             </Button>
 
-            <Button size="lg" variant="outline" className="border-white/20 hover:bg-white/5 bg-transparent">
-              Read Whitepaper
+            <Button size="lg" variant="outline" asChild className="border-white/20 hover:bg-white/5 bg-transparent">
+              <Link href="/auth">Sign In / Register</Link>
             </Button>
           </div>
         </div>
