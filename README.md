@@ -10,6 +10,76 @@ This repository hosts three parts of the system:
 - Node.js 18+ and npm
 - Access to your private RPC endpoint and deployer/oracle private keys
 
+## 0) Running the Private Blockchain (Clique PoA)
+
+This project uses a **private Ethereum-compatible blockchain** with
+**Proof of Authority (Clique)** consensus.  
+The blockchain configuration is provided in the `chain/` folder, while
+runtime state and credentials are generated locally.
+
+### Prerequisites
+- Docker & Docker Compose
+
+### First-Time Setup (One-Time Only)
+
+From the repository root:
+
+    cd chain
+
+Create a password file for the validator account:
+
+    echo password > password.txt
+
+Create the validator account (address will be stored locally):
+
+    docker run --rm -v ${PWD}:/data ethereum/client-go:v1.13.15 account new --datadir /data/geth-data --password /data/password.txt
+
+Initialize the blockchain state:
+
+    docker run --rm -v ${PWD}:/data ethereum/client-go:v1.13.15 init --datadir /data/geth-data /data/genesis.json
+
+> These steps are required only once.  
+> The generated files are stored locally and are not committed to the repository.
+
+### Start the Blockchain
+
+    docker compose up -d
+
+The node will expose an RPC endpoint at:
+
+    http://localhost:8545
+
+### Verify the Chain (PowerShell)
+
+Check chain ID:
+
+    Invoke-RestMethod -Uri http://localhost:8545 -Method POST -ContentType "application/json" -Body '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
+
+Expected result:
+
+    0x5eb
+
+Check block production (should increase on repeated calls):
+
+    Invoke-RestMethod -Uri http://localhost:8545 -Method POST -ContentType "application/json" -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+
+### MetaMask Configuration
+
+Add a custom network in MetaMask:
+- Network Name: Local Clique PoA
+- RPC URL: http://localhost:8545
+- Chain ID: 1515
+- Currency Symbol: ETH
+
+Transfer ETH from the validator account to other accounts if needed
+for contract deployment and frontend testing.
+
+### Notes
+- This blockchain is **private and permissioned**
+- Consensus uses **Clique Proof of Authority**
+- Intended for **academic and local development use only**
+
+
 ## 1) Smart Contracts (Hardhat)
 ```bash
 cd smart-contracts
@@ -132,3 +202,10 @@ Restart `npm run dev` after changes.
 - The dashboard reads balances via RPC; it will use your connected wallet if present, else fallback to the deployer address.
 - The quick actions (transfer/retire/surrender) send real transactions; ensure MetaMask is on the Hardhat network and the account holds the tokens (default deploy mints to Account #0 tokenId=1, allocates PTBAE to Account #0).
 - If you use a different account, transfer tokens from Account #0 to that account first (via the card actions) or change the deploy script to mint/allocate to your desired address and redeploy.
+
+
+
+```bash
+docker run --rm -v "$PWD":/data ethereum/client-go:stable \
+  account new --datadir /data/geth-data --password /data/password.txt
+```

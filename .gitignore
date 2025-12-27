@@ -2,3 +2,7 @@
 **/artifacts/
 **/cache/
 .env
+chain/geth-data/
+chain/password.txt
+
+chain/**/*.log
