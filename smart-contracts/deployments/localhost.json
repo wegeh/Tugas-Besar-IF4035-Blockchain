@@ -2,15 +2,19 @@
   "network": "localhost",
   "rpc": "http://127.0.0.1:8545",
   "MRVOracle": {
-    "address": "0x8AdF8EeAd529ECaA72322e7C3A784a9Ba76b3495"
+    "address": "0x16DD308583aBBeCa28D5541911FA95f188a36D16"
   },
   "SPEGRKToken": {
-    "address": "0x48Fa4F15250fd0adc3EE1c79E347A64527ACc06d",
+    "address": "0xAA770Af393FC51dbFb3D59c7fCcd0f29dE1Ab1E1",
     "tokenId": 1,
     "initialHolder": "0x373BA7c93F3D084f99cd038086Dd941821414F6b"
   },
+  "PTBAEFactory": {
+    "address": "0xfA55ba29cAC4Af79e82A731f25dC6f80ce12Eac5",
+    "initialPeriod": 1
+  },
   "PTBAEAllowanceToken": {
-    "address": "0x6749c695a78F57ea12c5E346fA005D5999F2E919",
+    "address": "0xda77D2A023003c0B471D99be1999c79F099DDe57",
     "period": 1,
     "initialHolder": "0x373BA7c93F3D084f99cd038086Dd941821414F6b"
   }

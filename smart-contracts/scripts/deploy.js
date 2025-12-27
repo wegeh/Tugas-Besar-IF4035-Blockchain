@@ -55,14 +55,24 @@ async function main() {
   await (await spe.issueSPE(tokenId, deployer.address, INITIAL_SPE_AMOUNT, meta, attestationId)).wait()
   console.log(`Issued SPE tokenId ${tokenId} amount ${INITIAL_SPE_AMOUNT} to ${deployer.address}`)
 
-  // ===== Deploy PTBAEAllowanceToken =====
+  // ===== Deploy PTBAEFactory =====
+  // This factory will automatically deploy the initial PTBAEAllowanceToken for INITIAL_PERIOD
+  const PTBAEFactory = await hre.ethers.getContractFactory("PTBAEFactory")
+  const factory = await PTBAEFactory.deploy(deployer.address, deployer.address, INITIAL_PERIOD)
+  await factory.waitForDeployment()
+  const factoryAddr = await factory.getAddress()
+  console.log("PTBAEFactory deployed:", factoryAddr)
+
+  // Get the token address for the initial period
+  const ptbaeAddr = await factory.tokenByPeriod(INITIAL_PERIOD)
+  console.log(`Initial PTBAEAllowanceToken for period ${INITIAL_PERIOD} at:`, ptbaeAddr)
+
+  // As the regulator is the admin/regulator of the token, we can interact with it directly
   const PTBAEAllowanceToken = await hre.ethers.getContractFactory("PTBAEAllowanceToken")
-  const ptbae = await PTBAEAllowanceToken.deploy(deployer.address, deployer.address, INITIAL_PERIOD)
-  await ptbae.waitForDeployment()
-  const ptbaeAddr = await ptbae.getAddress()
-  console.log("PTBAEAllowanceToken deployed:", ptbaeAddr)
+  const ptbae = PTBAEAllowanceToken.attach(ptbaeAddr)
 
   // Allocate initial allowance to deployer
+  console.log("Allocating initial allowance...")
   await (await ptbae.allocate(deployer.address, INITIAL_PTBAE_AMOUNT)).wait()
   console.log(`Allocated PTBAE amount ${INITIAL_PTBAE_AMOUNT} to ${deployer.address} for period ${INITIAL_PERIOD}`)
 
@@ -72,6 +82,7 @@ async function main() {
     rpc: hre.network.config.url || "",
     MRVOracle: { address: oracleAddr },
     SPEGRKToken: { address: speAddr, tokenId, initialHolder: deployer.address },
+    PTBAEFactory: { address: factoryAddr, initialPeriod: INITIAL_PERIOD },
     PTBAEAllowanceToken: { address: ptbaeAddr, period: INITIAL_PERIOD, initialHolder: deployer.address },
   }
 
@@ -85,24 +96,22 @@ async function main() {
   const frontendAbiDir = path.join(__dirname, "..", "..", "frontend", "abi")
   if (fs.existsSync(frontendAbiDir)) {
     const speArtifact = path.join(__dirname, "..", "artifacts", "contracts", "SPEGRKToken.sol", "SPEGRKToken.json")
-    const ptbaeArtifact = path.join(
-      __dirname,
-      "..",
-      "artifacts",
-      "contracts",
-      "PTBAEAllowanceToken.sol",
-      "PTBAEAllowanceToken.json"
-    )
+    const ptbaeArtifact = path.join(__dirname, "..", "artifacts", "contracts", "PTBAEAllowanceToken.sol", "PTBAEAllowanceToken.json")
+    const factoryArtifact = path.join(__dirname, "..", "artifacts", "contracts", "PTBAEFactory.sol", "PTBAEFactory.json")
+
     fs.copyFileSync(speArtifact, path.join(frontendAbiDir, "SPEGRKToken.json"))
     fs.copyFileSync(ptbaeArtifact, path.join(frontendAbiDir, "PTBAEAllowanceToken.json"))
+    fs.copyFileSync(factoryArtifact, path.join(frontendAbiDir, "PTBAEFactory.json"))
+
     fs.writeFileSync(path.join(frontendAbiDir, "addresses.local.json"), JSON.stringify(deployments, null, 2))
-    console.log("Copied ABIs and addresses.local.json into frontend/abi")
+    console.log("Copied ABIs (including Factory) and addresses.local.json into frontend/abi")
   } else {
     console.log("frontend/abi not found; skipped copying ABIs")
   }
 
   console.log("\nNEXT_PUBLIC_RPC_URL=", hre.network.config.url || "http://127.0.0.1:8545")
   console.log("NEXT_PUBLIC_SPE_ADDRESS=", speAddr)
+  console.log("NEXT_PUBLIC_PTBAE_FACTORY_ADDRESS=", factoryAddr)
   console.log("NEXT_PUBLIC_PTBAE_ADDRESS=", ptbaeAddr)
 }
 

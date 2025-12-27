@@ -28,6 +28,19 @@ contract PTBAEAllowanceToken is ERC20, AccessControl {
         emit Allocated(to, amount);
     }
 
+    function batchAllocate(address[] calldata recipients, uint256 amount) external onlyRole(REGULATOR_ROLE) {
+        require(amount > 0, "amount=0");
+        require(recipients.length > 0, "no recipients");
+        
+        for (uint256 i = 0; i < recipients.length; i++) {
+            address to = recipients[i];
+            if (to != address(0)) {
+                _mint(to, amount);
+                emit Allocated(to, amount);
+            }
+        }
+    }
+
     function surrender(uint256 amount) external {
         require(amount > 0, "amount=0");
         require(balanceOf(msg.sender) >= amount, "insufficient");

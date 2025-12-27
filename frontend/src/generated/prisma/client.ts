@@ -44,3 +44,8 @@ export { Prisma }
  * 
  */
 export type User = Prisma.UserModel
+/**
+ * Model CompliancePeriod
+ * 
+ */
+export type CompliancePeriod = Prisma.CompliancePeriodModel

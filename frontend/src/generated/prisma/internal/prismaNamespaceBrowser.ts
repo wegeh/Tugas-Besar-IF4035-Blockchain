@@ -51,7 +51,8 @@ export const AnyNull = runtime.AnyNull
 
 
 export const ModelName = {
-  User: 'User'
+  User: 'User',
+  CompliancePeriod: 'CompliancePeriod'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -81,6 +82,16 @@ export const UserScalarFieldEnum = {
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
+
+
+export const CompliancePeriodScalarFieldEnum = {
+  year: 'year',
+  tokenAddress: 'tokenAddress',
+  isActive: 'isActive',
+  createdAt: 'createdAt'
+} as const
+
+export type CompliancePeriodScalarFieldEnum = (typeof CompliancePeriodScalarFieldEnum)[keyof typeof CompliancePeriodScalarFieldEnum]
 
 
 export const SortOrder = {

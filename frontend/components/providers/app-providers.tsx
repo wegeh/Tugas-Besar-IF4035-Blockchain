@@ -3,7 +3,7 @@
 import { WagmiProvider } from "wagmi"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SessionProvider } from "next-auth/react"
-import { Toaster } from "sonner"
+import { Toaster } from "@/components/ui/sonner"
 import { wagmiConfig } from "@/lib/wagmi-config"
 
 const queryClient = new QueryClient()
@@ -14,7 +14,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
           {children}
-          <Toaster position="top-right" richColors />
+          <Toaster />
         </SessionProvider>
       </QueryClientProvider>
     </WagmiProvider>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Menu, X, Wallet, LogIn, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,12 @@ export function Navbar() {
   const { data: session, status } = useSession()
   const { address, isConnected } = useAccount()
   const { disconnect } = useDisconnect()
+
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleLogout = async () => {
     disconnect()
@@ -34,25 +40,27 @@ export function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
-            <Link href="#features" className="text-sm text-foreground/70 hover:text-foreground transition">
-              Features
-            </Link>
-            <Link href="#stats" className="text-sm text-foreground/70 hover:text-foreground transition">
-              Stats
-            </Link>
-            <Link href="#marketplace" className="text-sm text-foreground/70 hover:text-foreground transition">
-              Marketplace
-            </Link>
-          </div>
+          {!user && (
+            <div className="hidden md:flex items-center gap-8">
+              <Link href="#features" className="text-sm text-foreground/70 hover:text-foreground transition">
+                Features
+              </Link>
+              <Link href="#stats" className="text-sm text-foreground/70 hover:text-foreground transition">
+                Stats
+              </Link>
+              <Link href="#marketplace" className="text-sm text-foreground/70 hover:text-foreground transition">
+                Marketplace
+              </Link>
+            </div>
+          )}
 
           {/* CTA Button */}
           <div className="flex items-center gap-4">
             {/* Wallet Display (if connected) */}
-            {isConnected && address && (
+            {mounted && isConnected && address && (
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-mono text-emerald-400">
+                <span className="text-xs text-emerald-400 font-medium">
                   {address.slice(0, 6)}...{address.slice(-4)}
                 </span>
               </div>
@@ -77,7 +85,10 @@ export function Navbar() {
                   size="sm"
                   className="bg-linear-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white glow-green group relative overflow-hidden"
                 >
-                  <Link href="/dashboard" className="flex items-center gap-2">
+                  <Link
+                    href={user.role === "REGULATOR" ? "/dashboard/regulator" : "/dashboard/company"}
+                    className="flex items-center gap-2"
+                  >
                     <Wallet className="w-4 h-4 relative z-10" />
                     <span className="relative z-10">Dashboard</span>
                     <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-300 shimmer"></div>
@@ -120,18 +131,25 @@ export function Navbar() {
         {/* Mobile Navigation */}
         {isOpen && (
           <div className="md:hidden mt-4 pt-4 border-t border-white/10 space-y-4">
-            <Link href="#features" className="block text-sm text-foreground/70 hover:text-foreground">
-              Features
-            </Link>
-            <Link href="#stats" className="block text-sm text-foreground/70 hover:text-foreground">
-              Stats
-            </Link>
-            <Link href="#marketplace" className="block text-sm text-foreground/70 hover:text-foreground">
-              Marketplace
-            </Link>
+            {!user && (
+              <>
+                <Link href="#features" className="block text-sm text-foreground/70 hover:text-foreground">
+                  Features
+                </Link>
+                <Link href="#stats" className="block text-sm text-foreground/70 hover:text-foreground">
+                  Stats
+                </Link>
+                <Link href="#marketplace" className="block text-sm text-foreground/70 hover:text-foreground">
+                  Marketplace
+                </Link>
+              </>
+            )}
             {user ? (
               <>
-                <Link href="/dashboard" className="block text-sm text-foreground/70 hover:text-foreground">
+                <Link
+                  href={user.role === "REGULATOR" ? "/dashboard/regulator" : "/dashboard/company"}
+                  className="block text-sm text-foreground/70 hover:text-foreground"
+                >
                   Dashboard
                 </Link>
                 <button

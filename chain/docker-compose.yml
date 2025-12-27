@@ -8,19 +8,4 @@ services:
       - "8545:8545"
       - "30303:30303"
     command: >
-      --datadir /data/geth-data
-      --networkid 1515
-      --http
-      --http.addr 0.0.0.0
-      --http.port 8545
-      --http.api eth,net,web3,personal,clique
-      --http.corsdomain="*"
-      --http.vhosts="*"
-      --allow-insecure-unlock
-      --unlock "0x373ba7c93f3d084f99cd038086dd941821414f6b"
-      --password /data/password.txt
-      --miner.etherbase "0x373BA7c93F3D084f99cd038086Dd941821414F6b"
-      --mine
-      --syncmode full
-      --ipcdisable
-      --verbosity 3
+      --datadir /data/geth-data --networkid 1515 --http --http.addr 0.0.0.0 --http.port 8545 --http.api eth,net,web3,personal,clique --http.corsdomain="*" --http.vhosts="*" --allow-insecure-unlock --unlock "0xb24A4b5186059462634009816eB5BAbA70f0E671" --password /data/password.txt --miner.etherbase "0xb24A4b5186059462634009816eB5BAbA70f0E671" --mine --syncmode full --ipcdisable --verbosity 3

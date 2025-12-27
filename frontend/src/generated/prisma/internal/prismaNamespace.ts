@@ -384,7 +384,8 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 
 
 export const ModelName = {
-  User: 'User'
+  User: 'User',
+  CompliancePeriod: 'CompliancePeriod'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -400,7 +401,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user"
+    modelProps: "user" | "compliancePeriod"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -478,6 +479,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    CompliancePeriod: {
+      payload: Prisma.$CompliancePeriodPayload<ExtArgs>
+      fields: Prisma.CompliancePeriodFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.CompliancePeriodFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.CompliancePeriodFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>
+        }
+        findFirst: {
+          args: Prisma.CompliancePeriodFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.CompliancePeriodFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>
+        }
+        findMany: {
+          args: Prisma.CompliancePeriodFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>[]
+        }
+        create: {
+          args: Prisma.CompliancePeriodCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>
+        }
+        createMany: {
+          args: Prisma.CompliancePeriodCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.CompliancePeriodCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>[]
+        }
+        delete: {
+          args: Prisma.CompliancePeriodDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>
+        }
+        update: {
+          args: Prisma.CompliancePeriodUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>
+        }
+        deleteMany: {
+          args: Prisma.CompliancePeriodDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.CompliancePeriodUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.CompliancePeriodUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>[]
+        }
+        upsert: {
+          args: Prisma.CompliancePeriodUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompliancePeriodPayload>
+        }
+        aggregate: {
+          args: Prisma.CompliancePeriodAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCompliancePeriod>
+        }
+        groupBy: {
+          args: Prisma.CompliancePeriodGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CompliancePeriodGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.CompliancePeriodCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CompliancePeriodCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -528,6 +603,16 @@ export const UserScalarFieldEnum = {
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
+
+
+export const CompliancePeriodScalarFieldEnum = {
+  year: 'year',
+  tokenAddress: 'tokenAddress',
+  isActive: 'isActive',
+  createdAt: 'createdAt'
+} as const
+
+export type CompliancePeriodScalarFieldEnum = (typeof CompliancePeriodScalarFieldEnum)[keyof typeof CompliancePeriodScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -613,6 +698,27 @@ export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'In
  * Reference to a field of type 'Int[]'
  */
 export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+    
+
+
+/**
+ * Reference to a field of type 'Boolean'
+ */
+export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Boolean'>
+    
+
+
+/**
+ * Reference to a field of type 'Float'
+ */
+export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
+    
+
+
+/**
+ * Reference to a field of type 'Float[]'
+ */
+export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
     
 
 /**
@@ -711,6 +817,7 @@ export type PrismaClientOptions = ({
 }
 export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
+  compliancePeriod?: Prisma.CompliancePeriodOmit
 }
 
 /* Types for Logging */

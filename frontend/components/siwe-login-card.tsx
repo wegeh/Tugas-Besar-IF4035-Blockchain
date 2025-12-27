@@ -6,7 +6,7 @@ import { signIn } from "next-auth/react"
 import { SiweMessage } from "siwe"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Wallet, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Wallet, Loader2, AlertCircle, CheckCircle2, FileSignature } from "lucide-react"
 import { injected } from "wagmi/connectors"
 
 type Step = "connect" | "sign" | "loading" | "error" | "success"
@@ -92,7 +92,7 @@ export function SiweLoginCard() {
     return (
         <Card className="w-full max-w-md glass-lg border-white/10">
             <CardHeader className="text-center">
-                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+                <CardTitle className="text-2xl font-bold bg-linear-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
                     🌍 CarbonLedgerID
                 </CardTitle>
                 <CardDescription className="text-white/70">
@@ -108,7 +108,7 @@ export function SiweLoginCard() {
                         </p>
                         <Button
                             onClick={handleConnect}
-                            className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600"
+                            className="w-full bg-linear-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600"
                             size="lg"
                         >
                             <Wallet className="mr-2 h-5 w-5" />
@@ -131,10 +131,11 @@ export function SiweLoginCard() {
                         </p>
                         <Button
                             onClick={handleSignIn}
-                            className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600"
+                            className="w-full bg-linear-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600"
                             size="lg"
                         >
-                            ✍️ Sign In with Ethereum
+                            <FileSignature className="mr-2 h-5 w-5" />
+                            Sign In with Ethereum
                         </Button>
                         <Button
                             onClick={handleDisconnect}

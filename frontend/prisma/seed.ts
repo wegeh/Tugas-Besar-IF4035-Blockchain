@@ -28,13 +28,12 @@ async function main() {
     })
     console.log({ regulator })
 
-    // 2. Company A
-    // Ganti dengan wallet address MetaMask akun ke-2 Anda
+    // 2. Company A (User provided address for testing)
     const companyA = await prisma.user.upsert({
-        where: { walletAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' }, // Hardhat Account #1
+        where: { walletAddress: '0x7CfA165E0f8CBC1d624Ec746117FcC2cDeA9Fc8a' },
         update: {},
         create: {
-            walletAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8', // Hardhat Account #1
+            walletAddress: '0x7CfA165E0f8CBC1d624Ec746117FcC2cDeA9Fc8a',
             role: Role.COMPANY,
             companyName: 'PT. Pembangkit Jawa Bali',
             email: 'admin@pjb.com'
