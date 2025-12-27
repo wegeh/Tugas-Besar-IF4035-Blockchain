@@ -3,10 +3,10 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "./MRVOracle.sol";
 
 contract SPEGRKToken is ERC1155, AccessControl {
     bytes32 public constant REGULATOR_ROLE = keccak256("REGULATOR_ROLE");
-    bytes32 public constant ORACLE_ROLE    = keccak256("ORACLE_ROLE");
 
     enum Status { ACTIVE, RETIRED }
 
@@ -15,14 +15,6 @@ contract SPEGRKToken is ERC1155, AccessControl {
         uint16 vintageYear;
         string methodology;
         string registryRef;
-    }
-
-    struct Attestation {
-        bytes32 docHash;     // hash dokumen MRV (off-chain)
-        bytes32 metaHash;    // hash meta untuk mengikat metadata
-        bool valid;
-        bool used;
-        uint64 attestedAt;
     }
 
     mapping(uint256 => UnitMeta) public unitMeta;
@@ -34,35 +26,19 @@ contract SPEGRKToken is ERC1155, AccessControl {
     // supply tracking per tokenId (penting utk batch retirement)
     mapping(uint256 => uint256) public totalSupply;
 
-    // attestation registry
-    mapping(bytes32 => Attestation) public attestations;
+    // External Oracle reference
+    MRVOracle public oracle;
+    
+    // Prevent double spending of attestations
+    mapping(bytes32 => bool) public usedAttestations;
 
-    event MRVAttested(bytes32 indexed attestationId, bytes32 docHash, bytes32 metaHash);
     event SPEIssued(uint256 indexed tokenId, address indexed to, uint256 amount, bytes32 attestationId);
     event SPERetired(uint256 indexed tokenId, address indexed holder, uint256 amount);
 
-    constructor(string memory uri_, address admin, address regulator) ERC1155(uri_) {
+    constructor(string memory uri_, address admin, address regulator, address oracleAddress) ERC1155(uri_) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGULATOR_ROLE, regulator);
-    }
-
-    // Oracle menulis attestation. attestationId bisa dibuat dari docHash + metaHash + nonce
-    function attestMRV(bytes32 attestationId, bytes32 mrvDocHash, bytes32 metaHash)
-        external
-        onlyRole(ORACLE_ROLE)
-    {
-        Attestation storage a = attestations[attestationId];
-        require(!a.valid, "attestation exists");
-
-        attestations[attestationId] = Attestation({
-            docHash: mrvDocHash,
-            metaHash: metaHash,
-            valid: true,
-            used: false,
-            attestedAt: uint64(block.timestamp)
-        });
-
-        emit MRVAttested(attestationId, mrvDocHash, metaHash);
+        oracle = MRVOracle(oracleAddress);
     }
 
     function issueSPE(
@@ -78,24 +54,25 @@ contract SPEGRKToken is ERC1155, AccessControl {
         // tokenId = batch => only once issuance
         require(issuedAt[tokenId] == 0, "tokenId already issued");
 
-        Attestation storage a = attestations[attestationId];
-        require(a.valid, "no attestation");
-        require(!a.used, "attestation used");
+        // Check attestation from external Oracle
+        (bytes32 aDocHash, bytes32 aMetaHash, bool valid, ) = oracle.getAttestation(attestationId);
+        require(valid, "invalid attestation");
+        require(!usedAttestations[attestationId], "attestation used");
 
         // bind meta to attestation
         bytes32 computedMetaHash = keccak256(
             abi.encode(meta.projectId, meta.vintageYear, meta.methodology, meta.registryRef)
         );
-        require(computedMetaHash == a.metaHash, "meta mismatch");
+        require(computedMetaHash == aMetaHash, "meta mismatch");
 
         // commit data
         unitMeta[tokenId] = meta;
-        docHash[tokenId] = a.docHash;
+        docHash[tokenId] = aDocHash;
         status[tokenId] = Status.ACTIVE;
         issuedAt[tokenId] = uint64(block.timestamp);
 
-        // mark attestation used (prevents double issuance)
-        a.used = true;
+        // mark attestation used locally
+        usedAttestations[attestationId] = true;
 
         _mint(to, tokenId, amount, "");
         totalSupply[tokenId] += amount;

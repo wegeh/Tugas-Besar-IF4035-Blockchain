@@ -1,14 +1,17 @@
 {
   "network": "localhost",
   "rpc": "http://127.0.0.1:8545",
+  "MRVOracle": {
+    "address": "0x8AdF8EeAd529ECaA72322e7C3A784a9Ba76b3495"
+  },
   "SPEGRKToken": {
-    "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "address": "0x48Fa4F15250fd0adc3EE1c79E347A64527ACc06d",
     "tokenId": 1,
-    "initialHolder": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    "initialHolder": "0x373BA7c93F3D084f99cd038086Dd941821414F6b"
   },
   "PTBAEAllowanceToken": {
-    "address": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+    "address": "0x6749c695a78F57ea12c5E346fA005D5999F2E919",
     "period": 1,
-    "initialHolder": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    "initialHolder": "0x373BA7c93F3D084f99cd038086Dd941821414F6b"
   }
 }

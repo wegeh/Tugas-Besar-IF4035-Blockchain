@@ -12,16 +12,24 @@ async function main() {
 
   console.log("Deploying with:", deployer.address)
 
+  // ===== Deploy MRVOracle =====
+  const MRVOracle = await hre.ethers.getContractFactory("MRVOracle")
+  const oracle = await MRVOracle.deploy(deployer.address, deployer.address)
+  await oracle.waitForDeployment()
+  const oracleAddr = await oracle.getAddress()
+  console.log("MRVOracle deployed:", oracleAddr)
+
   // ===== Deploy SPEGRKToken =====
   const SPE = await hre.ethers.getContractFactory("SPEGRKToken")
-  const spe = await SPE.deploy(SPE_URI, deployer.address, deployer.address)
+  // Pass oracle address to constructor
+  const spe = await SPE.deploy(SPE_URI, deployer.address, deployer.address, oracleAddr)
   await spe.waitForDeployment()
   const speAddr = await spe.getAddress()
   console.log("SPEGRKToken deployed:", speAddr)
 
-  // Grant ORACLE_ROLE to deployer for testing attestation/issuance
-  const ORACLE_ROLE = hre.ethers.id("ORACLE_ROLE")
-  await (await spe.grantRole(ORACLE_ROLE, deployer.address)).wait()
+  // Grant OPERATOR_ROLE on Oracle to deployer
+  // const OPERATOR_ROLE = await oracle.OPERATOR_ROLE()
+  // Already granted in constructor to deployer, but good to know.
 
   // Demo attestation + issuance for tokenId 1
   const tokenId = 1
@@ -39,7 +47,11 @@ async function main() {
   )
   const docHash = hre.ethers.id("demo-mrv-doc")
   const attestationId = hre.ethers.id("demo-attestation-1")
-  await (await spe.attestMRV(attestationId, docHash, metaHash)).wait()
+
+  // Call attestMRV on the Oracle contract
+  await (await oracle.attestMRV(attestationId, docHash, metaHash)).wait()
+
+  // Issue on SPE contract (it calls oracle to verify)
   await (await spe.issueSPE(tokenId, deployer.address, INITIAL_SPE_AMOUNT, meta, attestationId)).wait()
   console.log(`Issued SPE tokenId ${tokenId} amount ${INITIAL_SPE_AMOUNT} to ${deployer.address}`)
 
@@ -58,6 +70,7 @@ async function main() {
   const deployments = {
     network: hre.network.name,
     rpc: hre.network.config.url || "",
+    MRVOracle: { address: oracleAddr },
     SPEGRKToken: { address: speAddr, tokenId, initialHolder: deployer.address },
     PTBAEAllowanceToken: { address: ptbaeAddr, period: INITIAL_PERIOD, initialHolder: deployer.address },
   }
