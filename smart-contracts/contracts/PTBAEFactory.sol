@@ -15,30 +15,22 @@ contract PTBAEFactory is AccessControl {
     constructor(address admin, address regulator, uint32 initialPeriod) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGULATOR_ROLE, regulator);
-        _openPeriod(initialPeriod);
+        _openPeriod(initialPeriod, regulator);
     }
 
     function openPeriod(uint32 newPeriod) external onlyRole(REGULATOR_ROLE) {
         require(tokenByPeriod[newPeriod] == address(0), "period exists");
-        _openPeriod(newPeriod);
+        _openPeriod(newPeriod, msg.sender);
     }
 
-    function _openPeriod(uint32 p) internal {
+    function _openPeriod(uint32 p, address regulator) internal {
         currentPeriod = p;
         PTBAEAllowanceToken token = new PTBAEAllowanceToken(
-            getRoleMemberOrAdmin(), // see note below
-            getRoleMemberOrAdmin(),
+            regulator, // Admin of the token
+            regulator, // Regulator of the token
             p
         );
         tokenByPeriod[p] = address(token);
         emit PeriodOpened(p, address(token));
-    }
-
-    // NOTE: sederhana: pakai msg.sender sebagai admin/regulator token.
-    // Untuk production, set admin/regulator eksplisit.
-    function getRoleMemberOrAdmin() internal view returns (address) {
-        // simplistic: default admin is deployer? (atau hardcode)
-        // biar ringkas, kembalikan address(0) itu salah—jadi di implementasi real, pass param.
-        return address(this);
     }
 }
