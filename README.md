@@ -98,3 +98,37 @@ npm run dev
 - [ ] ABIs copied into `frontend/abi/`.
 - [ ] Oracle `.env` filled and service running against the same RPC.
 - [ ] Frontend configured to the same RPC and using the deployed addresses.
+
+## Local dev quickstart (Hardhat + MetaMask)
+1) Start a local node (Hardhat default):
+```bash
+cd smart-contracts
+npx hardhat node --port 8545 --hostname 127.0.0.1
+```
+2) Deploy contracts to localhost and copy ABIs/addresses:
+```bash
+npx hardhat run scripts/deploy.js --network localhost
+```
+This writes `smart-contracts/deployments/localhost.json` and refreshes `frontend/abi/` (including `addresses.local.json`).
+
+3) Frontend env (`frontend/.env.local`):
+```
+NEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545
+NEXT_PUBLIC_SPE_ADDRESS=<from deploy log or addresses.local.json>
+NEXT_PUBLIC_PTBAE_ADDRESS=<from deploy log or addresses.local.json>
+AUTH_SECRET=<32+ chars>
+DATABASE_URL=<your postgres>
+```
+Restart `npm run dev` after changes.
+
+4) MetaMask setup for Hardhat:
+- Network: name = Hardhat Local, RPC URL = http://127.0.0.1:8545, Chain ID = 31337, Symbol = ETH.
+- Import a Hardhat test account (from `npx hardhat node` output):
+  - Example Account #0 PK: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
+  - Address: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
+- Switch MetaMask to this network/account, then approve the site connection when prompted.
+
+5) Using the dashboard:
+- The dashboard reads balances via RPC; it will use your connected wallet if present, else fallback to the deployer address.
+- The quick actions (transfer/retire/surrender) send real transactions; ensure MetaMask is on the Hardhat network and the account holds the tokens (default deploy mints to Account #0 tokenId=1, allocates PTBAE to Account #0).
+- If you use a different account, transfer tokens from Account #0 to that account first (via the card actions) or change the deploy script to mint/allocate to your desired address and redeploy.
