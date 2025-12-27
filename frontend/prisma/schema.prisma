@@ -13,18 +13,35 @@ enum Role {
 }
 
 model User {
-  id            String   @id @default(uuid())
-  walletAddress String   @unique
+  id            String       @id @default(uuid())
+  walletAddress String       @unique
   role          Role
   companyName   String?
-  email         String?  @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  email         String?      @unique
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  allocations   Allocation[]
 }
 
 model CompliancePeriod {
-  year         Int      @id
+  year         Int          @id
   tokenAddress String
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  allocations  Allocation[]
+}
+
+model Allocation {
+  id        String   @id @default(uuid())
+  amount    String
+  txHash    String
+  createdAt DateTime @default(now())
+
+  companyId String
+  company   User   @relation(fields: [companyId], references: [id])
+
+  periodYear Int
+  period     CompliancePeriod @relation(fields: [periodYear], references: [year])
+
+  @@unique([companyId, periodYear])
 }

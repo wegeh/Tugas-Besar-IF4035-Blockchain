@@ -10,6 +10,8 @@ const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || (addresses as any).rpc || "htt
 const speAddress = (addresses as any).SPEGRKToken?.address || process.env.NEXT_PUBLIC_SPE_ADDRESS || ""
 const factoryAddress = (addresses as any).PTBAEFactory?.address || process.env.NEXT_PUBLIC_PTBAE_FACTORY_ADDRESS || ""
 const defaultPtbaeAddress = (addresses as any).PTBAEAllowanceToken?.address || process.env.NEXT_PUBLIC_PTBAE_ADDRESS || ""
+export const forwarderAddress = (addresses as any).Forwarder?.address || ""
+export const DEBUG_FACTORY_ADDRESS = factoryAddress
 
 // Local PoA network configuration
 const HARDHAT_CHAIN_ID = "0x5EB" // 1515

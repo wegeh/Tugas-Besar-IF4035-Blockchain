@@ -208,6 +208,7 @@ export type CompliancePeriodWhereInput = {
   tokenAddress?: Prisma.StringFilter<"CompliancePeriod"> | string
   isActive?: Prisma.BoolFilter<"CompliancePeriod"> | boolean
   createdAt?: Prisma.DateTimeFilter<"CompliancePeriod"> | Date | string
+  allocations?: Prisma.AllocationListRelationFilter
 }
 
 export type CompliancePeriodOrderByWithRelationInput = {
@@ -215,6 +216,7 @@ export type CompliancePeriodOrderByWithRelationInput = {
   tokenAddress?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  allocations?: Prisma.AllocationOrderByRelationAggregateInput
 }
 
 export type CompliancePeriodWhereUniqueInput = Prisma.AtLeast<{
@@ -225,6 +227,7 @@ export type CompliancePeriodWhereUniqueInput = Prisma.AtLeast<{
   tokenAddress?: Prisma.StringFilter<"CompliancePeriod"> | string
   isActive?: Prisma.BoolFilter<"CompliancePeriod"> | boolean
   createdAt?: Prisma.DateTimeFilter<"CompliancePeriod"> | Date | string
+  allocations?: Prisma.AllocationListRelationFilter
 }, "year">
 
 export type CompliancePeriodOrderByWithAggregationInput = {
@@ -254,6 +257,7 @@ export type CompliancePeriodCreateInput = {
   tokenAddress: string
   isActive?: boolean
   createdAt?: Date | string
+  allocations?: Prisma.AllocationCreateNestedManyWithoutPeriodInput
 }
 
 export type CompliancePeriodUncheckedCreateInput = {
@@ -261,6 +265,7 @@ export type CompliancePeriodUncheckedCreateInput = {
   tokenAddress: string
   isActive?: boolean
   createdAt?: Date | string
+  allocations?: Prisma.AllocationUncheckedCreateNestedManyWithoutPeriodInput
 }
 
 export type CompliancePeriodUpdateInput = {
@@ -268,6 +273,7 @@ export type CompliancePeriodUpdateInput = {
   tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  allocations?: Prisma.AllocationUpdateManyWithoutPeriodNestedInput
 }
 
 export type CompliancePeriodUncheckedUpdateInput = {
@@ -275,6 +281,7 @@ export type CompliancePeriodUncheckedUpdateInput = {
   tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  allocations?: Prisma.AllocationUncheckedUpdateManyWithoutPeriodNestedInput
 }
 
 export type CompliancePeriodCreateManyInput = {
@@ -327,6 +334,11 @@ export type CompliancePeriodSumOrderByAggregateInput = {
   year?: Prisma.SortOrder
 }
 
+export type CompliancePeriodScalarRelationFilter = {
+  is?: Prisma.CompliancePeriodWhereInput
+  isNot?: Prisma.CompliancePeriodWhereInput
+}
+
 export type IntFieldUpdateOperationsInput = {
   set?: number
   increment?: number
@@ -339,6 +351,93 @@ export type BoolFieldUpdateOperationsInput = {
   set?: boolean
 }
 
+export type CompliancePeriodCreateNestedOneWithoutAllocationsInput = {
+  create?: Prisma.XOR<Prisma.CompliancePeriodCreateWithoutAllocationsInput, Prisma.CompliancePeriodUncheckedCreateWithoutAllocationsInput>
+  connectOrCreate?: Prisma.CompliancePeriodCreateOrConnectWithoutAllocationsInput
+  connect?: Prisma.CompliancePeriodWhereUniqueInput
+}
+
+export type CompliancePeriodUpdateOneRequiredWithoutAllocationsNestedInput = {
+  create?: Prisma.XOR<Prisma.CompliancePeriodCreateWithoutAllocationsInput, Prisma.CompliancePeriodUncheckedCreateWithoutAllocationsInput>
+  connectOrCreate?: Prisma.CompliancePeriodCreateOrConnectWithoutAllocationsInput
+  upsert?: Prisma.CompliancePeriodUpsertWithoutAllocationsInput
+  connect?: Prisma.CompliancePeriodWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.CompliancePeriodUpdateToOneWithWhereWithoutAllocationsInput, Prisma.CompliancePeriodUpdateWithoutAllocationsInput>, Prisma.CompliancePeriodUncheckedUpdateWithoutAllocationsInput>
+}
+
+export type CompliancePeriodCreateWithoutAllocationsInput = {
+  year: number
+  tokenAddress: string
+  isActive?: boolean
+  createdAt?: Date | string
+}
+
+export type CompliancePeriodUncheckedCreateWithoutAllocationsInput = {
+  year: number
+  tokenAddress: string
+  isActive?: boolean
+  createdAt?: Date | string
+}
+
+export type CompliancePeriodCreateOrConnectWithoutAllocationsInput = {
+  where: Prisma.CompliancePeriodWhereUniqueInput
+  create: Prisma.XOR<Prisma.CompliancePeriodCreateWithoutAllocationsInput, Prisma.CompliancePeriodUncheckedCreateWithoutAllocationsInput>
+}
+
+export type CompliancePeriodUpsertWithoutAllocationsInput = {
+  update: Prisma.XOR<Prisma.CompliancePeriodUpdateWithoutAllocationsInput, Prisma.CompliancePeriodUncheckedUpdateWithoutAllocationsInput>
+  create: Prisma.XOR<Prisma.CompliancePeriodCreateWithoutAllocationsInput, Prisma.CompliancePeriodUncheckedCreateWithoutAllocationsInput>
+  where?: Prisma.CompliancePeriodWhereInput
+}
+
+export type CompliancePeriodUpdateToOneWithWhereWithoutAllocationsInput = {
+  where?: Prisma.CompliancePeriodWhereInput
+  data: Prisma.XOR<Prisma.CompliancePeriodUpdateWithoutAllocationsInput, Prisma.CompliancePeriodUncheckedUpdateWithoutAllocationsInput>
+}
+
+export type CompliancePeriodUpdateWithoutAllocationsInput = {
+  year?: Prisma.IntFieldUpdateOperationsInput | number
+  tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
+export type CompliancePeriodUncheckedUpdateWithoutAllocationsInput = {
+  year?: Prisma.IntFieldUpdateOperationsInput | number
+  tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
+
+/**
+ * Count Type CompliancePeriodCountOutputType
+ */
+
+export type CompliancePeriodCountOutputType = {
+  allocations: number
+}
+
+export type CompliancePeriodCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  allocations?: boolean | CompliancePeriodCountOutputTypeCountAllocationsArgs
+}
+
+/**
+ * CompliancePeriodCountOutputType without action
+ */
+export type CompliancePeriodCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the CompliancePeriodCountOutputType
+   */
+  select?: Prisma.CompliancePeriodCountOutputTypeSelect<ExtArgs> | null
+}
+
+/**
+ * CompliancePeriodCountOutputType without action
+ */
+export type CompliancePeriodCountOutputTypeCountAllocationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.AllocationWhereInput
+}
 
 
 export type CompliancePeriodSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -346,6 +445,8 @@ export type CompliancePeriodSelect<ExtArgs extends runtime.Types.Extensions.Inte
   tokenAddress?: boolean
   isActive?: boolean
   createdAt?: boolean
+  allocations?: boolean | Prisma.CompliancePeriod$allocationsArgs<ExtArgs>
+  _count?: boolean | Prisma.CompliancePeriodCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["compliancePeriod"]>
 
 export type CompliancePeriodSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -370,10 +471,18 @@ export type CompliancePeriodSelectScalar = {
 }
 
 export type CompliancePeriodOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"year" | "tokenAddress" | "isActive" | "createdAt", ExtArgs["result"]["compliancePeriod"]>
+export type CompliancePeriodInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  allocations?: boolean | Prisma.CompliancePeriod$allocationsArgs<ExtArgs>
+  _count?: boolean | Prisma.CompliancePeriodCountOutputTypeDefaultArgs<ExtArgs>
+}
+export type CompliancePeriodIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
+export type CompliancePeriodIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
 
 export type $CompliancePeriodPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "CompliancePeriod"
-  objects: {}
+  objects: {
+    allocations: Prisma.$AllocationPayload<ExtArgs>[]
+  }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     year: number
     tokenAddress: string
@@ -773,6 +882,7 @@ readonly fields: CompliancePeriodFieldRefs;
  */
 export interface Prisma__CompliancePeriodClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
+  allocations<T extends Prisma.CompliancePeriod$allocationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.CompliancePeriod$allocationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$AllocationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -823,6 +933,10 @@ export type CompliancePeriodFindUniqueArgs<ExtArgs extends runtime.Types.Extensi
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
   /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
+  /**
    * Filter, which CompliancePeriod to fetch.
    */
   where: Prisma.CompliancePeriodWhereUniqueInput
@@ -841,6 +955,10 @@ export type CompliancePeriodFindUniqueOrThrowArgs<ExtArgs extends runtime.Types.
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
   /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
+  /**
    * Filter, which CompliancePeriod to fetch.
    */
   where: Prisma.CompliancePeriodWhereUniqueInput
@@ -858,6 +976,10 @@ export type CompliancePeriodFindFirstArgs<ExtArgs extends runtime.Types.Extensio
    * Omit specific fields from the CompliancePeriod
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
   /**
    * Filter, which CompliancePeriod to fetch.
    */
@@ -907,6 +1029,10 @@ export type CompliancePeriodFindFirstOrThrowArgs<ExtArgs extends runtime.Types.E
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
   /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
+  /**
    * Filter, which CompliancePeriod to fetch.
    */
   where?: Prisma.CompliancePeriodWhereInput
@@ -955,6 +1081,10 @@ export type CompliancePeriodFindManyArgs<ExtArgs extends runtime.Types.Extension
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
   /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
+  /**
    * Filter, which CompliancePeriods to fetch.
    */
   where?: Prisma.CompliancePeriodWhereInput
@@ -997,6 +1127,10 @@ export type CompliancePeriodCreateArgs<ExtArgs extends runtime.Types.Extensions.
    * Omit specific fields from the CompliancePeriod
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
   /**
    * The data needed to create a CompliancePeriod.
    */
@@ -1045,6 +1179,10 @@ export type CompliancePeriodUpdateArgs<ExtArgs extends runtime.Types.Extensions.
    * Omit specific fields from the CompliancePeriod
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
   /**
    * The data needed to update a CompliancePeriod.
    */
@@ -1112,6 +1250,10 @@ export type CompliancePeriodUpsertArgs<ExtArgs extends runtime.Types.Extensions.
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
   /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
+  /**
    * The filter to search for the CompliancePeriod to update in case it exists.
    */
   where: Prisma.CompliancePeriodWhereUniqueInput
@@ -1138,6 +1280,10 @@ export type CompliancePeriodDeleteArgs<ExtArgs extends runtime.Types.Extensions.
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
   /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
+  /**
    * Filter which CompliancePeriod to delete.
    */
   where: Prisma.CompliancePeriodWhereUniqueInput
@@ -1158,6 +1304,30 @@ export type CompliancePeriodDeleteManyArgs<ExtArgs extends runtime.Types.Extensi
 }
 
 /**
+ * CompliancePeriod.allocations
+ */
+export type CompliancePeriod$allocationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Allocation
+   */
+  select?: Prisma.AllocationSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Allocation
+   */
+  omit?: Prisma.AllocationOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.AllocationInclude<ExtArgs> | null
+  where?: Prisma.AllocationWhereInput
+  orderBy?: Prisma.AllocationOrderByWithRelationInput | Prisma.AllocationOrderByWithRelationInput[]
+  cursor?: Prisma.AllocationWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.AllocationScalarFieldEnum | Prisma.AllocationScalarFieldEnum[]
+}
+
+/**
  * CompliancePeriod without action
  */
 export type CompliancePeriodDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -1169,4 +1339,8 @@ export type CompliancePeriodDefaultArgs<ExtArgs extends runtime.Types.Extensions
    * Omit specific fields from the CompliancePeriod
    */
   omit?: Prisma.CompliancePeriodOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompliancePeriodInclude<ExtArgs> | null
 }

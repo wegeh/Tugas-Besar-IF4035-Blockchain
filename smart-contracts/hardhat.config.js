@@ -8,8 +8,9 @@ module.exports = {
   networks: {
     // Local Hardhat node (buat compile/deploy + FE dev)
     localhost: {
-      url: "http://127.0.0.1:8545",
-      chainId: 1515,
+      url: process.env.RPC_URL || "http://127.0.0.1:8545",
+      chainId: Number(process.env.CHAIN_ID || "1515"),
+      accounts: "remote", // Use unlocked node accounts
     },
 
     // Private PoA network (isi nanti kalau RPC sudah ada)

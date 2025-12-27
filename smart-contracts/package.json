@@ -7,6 +7,7 @@
     "compile": "hardhat compile",
     "node": "hardhat node",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "grant-roles:local": "hardhat run scripts/grant-regulator.js --network localhost",
     "test": "hardhat test"
   },
   "license": "ISC",
@@ -16,6 +17,6 @@
     "hardhat": "^2.28.0"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.0.0"
+    "@openzeppelin/contracts": "^5.4.0"
   }
 }

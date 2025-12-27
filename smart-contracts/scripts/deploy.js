@@ -12,6 +12,13 @@ async function main() {
 
   console.log("Deploying with:", deployer.address)
 
+  // ===== Deploy Forwarder (ERC-2771) =====
+  const Forwarder = await hre.ethers.getContractFactory("Forwarder")
+  const forwarder = await Forwarder.deploy()
+  await forwarder.waitForDeployment()
+  const forwarderAddr = await forwarder.getAddress()
+  console.log("Forwarder deployed:", forwarderAddr)
+
   // ===== Deploy MRVOracle =====
   const MRVOracle = await hre.ethers.getContractFactory("MRVOracle")
   const oracle = await MRVOracle.deploy(deployer.address, deployer.address)
@@ -21,8 +28,8 @@ async function main() {
 
   // ===== Deploy SPEGRKToken =====
   const SPE = await hre.ethers.getContractFactory("SPEGRKToken")
-  // Pass oracle address to constructor
-  const spe = await SPE.deploy(SPE_URI, deployer.address, deployer.address, oracleAddr)
+  // Pass oracle and forwarder address to constructor
+  const spe = await SPE.deploy(SPE_URI, deployer.address, deployer.address, oracleAddr, forwarderAddr)
   await spe.waitForDeployment()
   const speAddr = await spe.getAddress()
   console.log("SPEGRKToken deployed:", speAddr)
@@ -58,7 +65,8 @@ async function main() {
   // ===== Deploy PTBAEFactory =====
   // This factory will automatically deploy the initial PTBAEAllowanceToken for INITIAL_PERIOD
   const PTBAEFactory = await hre.ethers.getContractFactory("PTBAEFactory")
-  const factory = await PTBAEFactory.deploy(deployer.address, deployer.address, INITIAL_PERIOD)
+  // Pass forwarder address to factory
+  const factory = await PTBAEFactory.deploy(deployer.address, deployer.address, INITIAL_PERIOD, forwarderAddr)
   await factory.waitForDeployment()
   const factoryAddr = await factory.getAddress()
   console.log("PTBAEFactory deployed:", factoryAddr)
@@ -80,6 +88,7 @@ async function main() {
   const deployments = {
     network: hre.network.name,
     rpc: hre.network.config.url || "",
+    Forwarder: { address: forwarderAddr },
     MRVOracle: { address: oracleAddr },
     SPEGRKToken: { address: speAddr, tokenId, initialHolder: deployer.address },
     PTBAEFactory: { address: factoryAddr, initialPeriod: INITIAL_PERIOD },
@@ -98,10 +107,12 @@ async function main() {
     const speArtifact = path.join(__dirname, "..", "artifacts", "contracts", "SPEGRKToken.sol", "SPEGRKToken.json")
     const ptbaeArtifact = path.join(__dirname, "..", "artifacts", "contracts", "PTBAEAllowanceToken.sol", "PTBAEAllowanceToken.json")
     const factoryArtifact = path.join(__dirname, "..", "artifacts", "contracts", "PTBAEFactory.sol", "PTBAEFactory.json")
+    const forwarderArtifact = path.join(__dirname, "..", "artifacts", "contracts", "Forwarder.sol", "Forwarder.json")
 
     fs.copyFileSync(speArtifact, path.join(frontendAbiDir, "SPEGRKToken.json"))
     fs.copyFileSync(ptbaeArtifact, path.join(frontendAbiDir, "PTBAEAllowanceToken.json"))
     fs.copyFileSync(factoryArtifact, path.join(frontendAbiDir, "PTBAEFactory.json"))
+    fs.copyFileSync(forwarderArtifact, path.join(frontendAbiDir, "Forwarder.json"))
 
     fs.writeFileSync(path.join(frontendAbiDir, "addresses.local.json"), JSON.stringify(deployments, null, 2))
     console.log("Copied ABIs (including Factory) and addresses.local.json into frontend/abi")

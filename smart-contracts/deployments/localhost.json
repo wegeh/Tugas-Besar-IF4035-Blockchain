@@ -1,21 +1,24 @@
 {
   "network": "localhost",
   "rpc": "http://127.0.0.1:8545",
+  "Forwarder": {
+    "address": "0xb0070818E328044b6E0aCb308A92F3df115814e7"
+  },
   "MRVOracle": {
-    "address": "0x16DD308583aBBeCa28D5541911FA95f188a36D16"
+    "address": "0x2A6D505fFBFb857F44a29aA6195602c527A45Bb3"
   },
   "SPEGRKToken": {
-    "address": "0xAA770Af393FC51dbFb3D59c7fCcd0f29dE1Ab1E1",
+    "address": "0x168C034c081BD3b97BdCb7B30BF2aF4a5103C7B8",
     "tokenId": 1,
-    "initialHolder": "0x373BA7c93F3D084f99cd038086Dd941821414F6b"
+    "initialHolder": "0x940D92a0A0DAe70909822F488DAe9178cF761A43"
   },
   "PTBAEFactory": {
-    "address": "0xfA55ba29cAC4Af79e82A731f25dC6f80ce12Eac5",
+    "address": "0xCD693B7244679984Ee4dBa628fC11aB16e158235",
     "initialPeriod": 1
   },
   "PTBAEAllowanceToken": {
-    "address": "0xda77D2A023003c0B471D99be1999c79F099DDe57",
+    "address": "0xcd6cdA277945ffd749Da0B237296aFAD2C7Fc277",
     "period": 1,
-    "initialHolder": "0x373BA7c93F3D084f99cd038086Dd941821414F6b"
+    "initialHolder": "0x940D92a0A0DAe70909822F488DAe9178cF761A43"
   }
 }

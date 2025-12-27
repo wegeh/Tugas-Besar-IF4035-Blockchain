@@ -20,7 +20,7 @@ const config: runtime.GetPrismaClientConfig = {
   "clientVersion": "7.2.0",
   "engineVersion": "0c8ef2ce45c83248ab3df073180d5eda9e8be7a3",
   "activeProvider": "postgresql",
-  "inlineSchema": "generator client {\n  provider = \"prisma-client\"\n  output   = \"../src/generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n\nenum Role {\n  COMPANY\n  REGULATOR\n}\n\nmodel User {\n  id            String   @id @default(uuid())\n  walletAddress String   @unique\n  role          Role\n  companyName   String?\n  email         String?  @unique\n  createdAt     DateTime @default(now())\n  updatedAt     DateTime @updatedAt\n}\n\nmodel CompliancePeriod {\n  year         Int      @id\n  tokenAddress String\n  isActive     Boolean  @default(true)\n  createdAt    DateTime @default(now())\n}\n",
+  "inlineSchema": "generator client {\n  provider = \"prisma-client\"\n  output   = \"../src/generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n\nenum Role {\n  COMPANY\n  REGULATOR\n}\n\nmodel User {\n  id            String       @id @default(uuid())\n  walletAddress String       @unique\n  role          Role\n  companyName   String?\n  email         String?      @unique\n  createdAt     DateTime     @default(now())\n  updatedAt     DateTime     @updatedAt\n  allocations   Allocation[]\n}\n\nmodel CompliancePeriod {\n  year         Int          @id\n  tokenAddress String\n  isActive     Boolean      @default(true)\n  createdAt    DateTime     @default(now())\n  allocations  Allocation[]\n}\n\nmodel Allocation {\n  id        String   @id @default(uuid())\n  amount    String\n  txHash    String\n  createdAt DateTime @default(now())\n\n  companyId String\n  company   User   @relation(fields: [companyId], references: [id])\n\n  periodYear Int\n  period     CompliancePeriod @relation(fields: [periodYear], references: [year])\n\n  @@unique([companyId, periodYear])\n}\n",
   "runtimeDataModel": {
     "models": {},
     "enums": {},
@@ -28,7 +28,7 @@ const config: runtime.GetPrismaClientConfig = {
   }
 }
 
-config.runtimeDataModel = JSON.parse("{\"models\":{\"User\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"walletAddress\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"role\",\"kind\":\"enum\",\"type\":\"Role\"},{\"name\":\"companyName\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"email\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null},\"CompliancePeriod\":{\"fields\":[{\"name\":\"year\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"tokenAddress\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"isActive\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
+config.runtimeDataModel = JSON.parse("{\"models\":{\"User\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"walletAddress\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"role\",\"kind\":\"enum\",\"type\":\"Role\"},{\"name\":\"companyName\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"email\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"allocations\",\"kind\":\"object\",\"type\":\"Allocation\",\"relationName\":\"AllocationToUser\"}],\"dbName\":null},\"CompliancePeriod\":{\"fields\":[{\"name\":\"year\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"tokenAddress\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"isActive\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"allocations\",\"kind\":\"object\",\"type\":\"Allocation\",\"relationName\":\"AllocationToCompliancePeriod\"}],\"dbName\":null},\"Allocation\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"amount\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"txHash\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"companyId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"company\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"AllocationToUser\"},{\"name\":\"periodYear\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"period\",\"kind\":\"object\",\"type\":\"CompliancePeriod\",\"relationName\":\"AllocationToCompliancePeriod\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
 
 async function decodeBase64AsWasm(wasmBase64: string): Promise<WebAssembly.Module> {
   const { Buffer } = await import('node:buffer')
@@ -193,6 +193,16 @@ export interface PrismaClient<
     * ```
     */
   get compliancePeriod(): Prisma.CompliancePeriodDelegate<ExtArgs, { omit: OmitOpts }>;
+
+  /**
+   * `prisma.allocation`: Exposes CRUD operations for the **Allocation** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more Allocations
+    * const allocations = await prisma.allocation.findMany()
+    * ```
+    */
+  get allocation(): Prisma.AllocationDelegate<ExtArgs, { omit: OmitOpts }>;
 }
 
 export function getPrismaClientClass(): PrismaClientConstructor {

@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { getPTBAEBalance, getSPEBalance, getPtbaeContract, getSpeContract, getSigner } from "@/lib/contracts"
+import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
+import { getPTBAEBalance, getSPEBalance, getPtbaeContract, getSpeContract, getSigner, forwarderAddress } from "@/lib/contracts"
 import { Loader2, Leaf, Factory, RefreshCw, LayoutDashboard, Send } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { DashboardShell } from "@/components/dashboard-shell"
@@ -48,14 +49,30 @@ export default function CompanyDashboard() {
         try {
             const signer = await getSigner()
             const contract = getPtbaeContract(signer)
+
+            // Encode function data
             const amountWei = BigInt(surrenderAmount)
-            const tx = await contract.surrender(amountWei)
-            await tx.wait()
-            toast.success("Success", { description: `Surrendered ${surrenderAmount} PTBAE Quota.` })
+            const data = contract.interface.encodeFunctionData("surrender", [amountWei])
+            const to = await contract.getAddress()
+
+            // Create and Sign Meta-Tx (Gasless)
+            toast.info("Signing Request", { description: "Please sign the gasless transaction in your wallet..." })
+            const { request, signature } = await createMetaTx(signer, forwarderAddress, to, data)
+
+            // Send to Relayer
+            toast.info("Processing", { description: "Sending transaction to relayer..." })
+            const result = await sendMetaTx(request, signature)
+
+            toast.success("Success", { description: `Surrendered ${surrenderAmount} PTBAE Quota. Tx: ${result.txHash.slice(0, 10)}...` })
             setRefreshKey(p => p + 1)
         } catch (error: any) {
-            console.error(error)
-            toast.error("Surrender Failed", { description: "Check console for details." })
+            console.error("Surrender Error:", error)
+            const msg = error.message?.toLowerCase() || ""
+            if (msg.includes("rejected")) {
+                toast.error("Transaction rejected by user.")
+            } else {
+                toast.error("Surrender failed. Please try again.")
+            }
         } finally {
             setLoading(false)
         }
@@ -68,14 +85,30 @@ export default function CompanyDashboard() {
         try {
             const signer = await getSigner()
             const contract = getSpeContract(signer)
+
+            // Encode function data
             const amount = BigInt(retireAmount)
-            const tx = await contract.retireSPE(tokenId, amount)
-            await tx.wait()
-            toast.success("Success", { description: `Retired ${retireAmount} SPE Credits.` })
+            const data = contract.interface.encodeFunctionData("retireSPE", [tokenId, amount])
+            const to = await contract.getAddress()
+
+            // Create and Sign Meta-Tx (Gasless)
+            toast.info("Signing Request", { description: "Please sign the gasless transaction in your wallet..." })
+            const { request, signature } = await createMetaTx(signer, forwarderAddress, to, data)
+
+            // Send to Relayer
+            toast.info("Processing", { description: "Sending transaction to relayer..." })
+            const result = await sendMetaTx(request, signature)
+
+            toast.success("Success", { description: `Retired ${retireAmount} SPE Credits. Tx: ${result.txHash.slice(0, 10)}...` })
             setRefreshKey(p => p + 1)
         } catch (error: any) {
-            console.error(error)
-            toast.error("Retire Failed", { description: "Check console for details." })
+            console.error("Retire Error:", error)
+            const msg = error.message?.toLowerCase() || ""
+            if (msg.includes("rejected")) {
+                toast.error("Transaction rejected by user.")
+            } else {
+                toast.error("retirement failed. Please try again.")
+            }
         } finally {
             setLoading(false)
         }

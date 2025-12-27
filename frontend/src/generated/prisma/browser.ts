@@ -27,3 +27,8 @@ export type User = Prisma.UserModel
  * 
  */
 export type CompliancePeriod = Prisma.CompliancePeriodModel
+/**
+ * Model Allocation
+ * 
+ */
+export type Allocation = Prisma.AllocationModel

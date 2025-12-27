@@ -385,7 +385,8 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 
 export const ModelName = {
   User: 'User',
-  CompliancePeriod: 'CompliancePeriod'
+  CompliancePeriod: 'CompliancePeriod',
+  Allocation: 'Allocation'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -401,7 +402,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "compliancePeriod"
+    modelProps: "user" | "compliancePeriod" | "allocation"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -553,6 +554,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    Allocation: {
+      payload: Prisma.$AllocationPayload<ExtArgs>
+      fields: Prisma.AllocationFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AllocationFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AllocationFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>
+        }
+        findFirst: {
+          args: Prisma.AllocationFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AllocationFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>
+        }
+        findMany: {
+          args: Prisma.AllocationFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>[]
+        }
+        create: {
+          args: Prisma.AllocationCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>
+        }
+        createMany: {
+          args: Prisma.AllocationCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AllocationCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>[]
+        }
+        delete: {
+          args: Prisma.AllocationDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>
+        }
+        update: {
+          args: Prisma.AllocationUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>
+        }
+        deleteMany: {
+          args: Prisma.AllocationDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AllocationUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AllocationUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>[]
+        }
+        upsert: {
+          args: Prisma.AllocationUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AllocationPayload>
+        }
+        aggregate: {
+          args: Prisma.AllocationAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAllocation>
+        }
+        groupBy: {
+          args: Prisma.AllocationGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AllocationGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AllocationCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AllocationCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -613,6 +688,18 @@ export const CompliancePeriodScalarFieldEnum = {
 } as const
 
 export type CompliancePeriodScalarFieldEnum = (typeof CompliancePeriodScalarFieldEnum)[keyof typeof CompliancePeriodScalarFieldEnum]
+
+
+export const AllocationScalarFieldEnum = {
+  id: 'id',
+  amount: 'amount',
+  txHash: 'txHash',
+  createdAt: 'createdAt',
+  companyId: 'companyId',
+  periodYear: 'periodYear'
+} as const
+
+export type AllocationScalarFieldEnum = (typeof AllocationScalarFieldEnum)[keyof typeof AllocationScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -818,6 +905,7 @@ export type PrismaClientOptions = ({
 export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
   compliancePeriod?: Prisma.CompliancePeriodOmit
+  allocation?: Prisma.AllocationOmit
 }
 
 /* Types for Logging */

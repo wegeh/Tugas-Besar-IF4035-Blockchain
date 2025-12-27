@@ -10,4 +10,5 @@
  */
 export type * from './models/User'
 export type * from './models/CompliancePeriod'
+export type * from './models/Allocation'
 export type * from './commonInputTypes'

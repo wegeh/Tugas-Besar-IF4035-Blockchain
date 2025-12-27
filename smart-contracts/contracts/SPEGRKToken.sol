@@ -3,9 +3,10 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import "./MRVOracle.sol";
 
-contract SPEGRKToken is ERC1155, AccessControl {
+contract SPEGRKToken is ERC1155, AccessControl, ERC2771Context {
     bytes32 public constant REGULATOR_ROLE = keccak256("REGULATOR_ROLE");
 
     enum Status { ACTIVE, RETIRED }
@@ -35,7 +36,10 @@ contract SPEGRKToken is ERC1155, AccessControl {
     event SPEIssued(uint256 indexed tokenId, address indexed to, uint256 amount, bytes32 attestationId);
     event SPERetired(uint256 indexed tokenId, address indexed holder, uint256 amount);
 
-    constructor(string memory uri_, address admin, address regulator, address oracleAddress) ERC1155(uri_) {
+    constructor(string memory uri_, address admin, address regulator, address oracleAddress, address trustedForwarder) 
+        ERC1155(uri_) 
+        ERC2771Context(trustedForwarder)
+    {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGULATOR_ROLE, regulator);
         oracle = MRVOracle(oracleAddress);
@@ -83,12 +87,12 @@ contract SPEGRKToken is ERC1155, AccessControl {
     function retireSPE(uint256 tokenId, uint256 amount) external {
         require(amount > 0, "amount=0");
         require(status[tokenId] == Status.ACTIVE, "already retired");
-        require(balanceOf(msg.sender, tokenId) >= amount, "insufficient");
+        require(balanceOf(_msgSender(), tokenId) >= amount, "insufficient");
 
-        _burn(msg.sender, tokenId, amount);
+        _burn(_msgSender(), tokenId, amount);
         totalSupply[tokenId] -= amount;
 
-        emit SPERetired(tokenId, msg.sender, amount);
+        emit SPERetired(tokenId, _msgSender(), amount);
 
         // batch considered retired only when supply reaches 0
         if (totalSupply[tokenId] == 0) {
@@ -124,5 +128,17 @@ contract SPEGRKToken is ERC1155, AccessControl {
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
+    }
+
+    function _msgSender() internal view override(Context, ERC2771Context) returns (address) {
+        return ERC2771Context._msgSender();
+    }
+
+    function _msgData() internal view override(Context, ERC2771Context) returns (bytes calldata) {
+        return ERC2771Context._msgData();
+    }
+
+    function _contextSuffixLength() internal view override(ERC2771Context, Context) returns (uint256) {
+        return ERC2771Context._contextSuffixLength();
     }
 }

@@ -3,18 +3,22 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 
-contract PTBAEAllowanceToken is ERC20, AccessControl {
+contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context {
     bytes32 public constant REGULATOR_ROLE = keccak256("REGULATOR_ROLE");
     uint32 public immutable period;
+    bool public isEnded = false;
 
     mapping(address => uint256) public surrendered;
 
     event Allocated(address indexed to, uint256 amount);
     event Surrendered(address indexed from, uint256 amount);
+    event PeriodEnded(uint32 period);
 
-    constructor(address admin, address regulator, uint32 _period)
+    constructor(address admin, address regulator, uint32 _period, address trustedForwarder)
         ERC20("PTBAE-PU Allowance", "PTBAE")
+        ERC2771Context(trustedForwarder)
     {
         period = _period;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -22,6 +26,7 @@ contract PTBAEAllowanceToken is ERC20, AccessControl {
     }
 
     function allocate(address to, uint256 amount) external onlyRole(REGULATOR_ROLE) {
+        require(!isEnded, "period ended");
         require(to != address(0), "to=0");
         require(amount > 0, "amount=0");
         _mint(to, amount);
@@ -29,6 +34,7 @@ contract PTBAEAllowanceToken is ERC20, AccessControl {
     }
 
     function batchAllocate(address[] calldata recipients, uint256 amount) external onlyRole(REGULATOR_ROLE) {
+        require(!isEnded, "period ended");
         require(amount > 0, "amount=0");
         require(recipients.length > 0, "no recipients");
         
@@ -43,10 +49,10 @@ contract PTBAEAllowanceToken is ERC20, AccessControl {
 
     function surrender(uint256 amount) external {
         require(amount > 0, "amount=0");
-        require(balanceOf(msg.sender) >= amount, "insufficient");
-        _burn(msg.sender, amount);
-        surrendered[msg.sender] += amount;
-        emit Surrendered(msg.sender, amount);
+        require(balanceOf(_msgSender()) >= amount, "insufficient");
+        _burn(_msgSender(), amount);
+        surrendered[_msgSender()] += amount;
+        emit Surrendered(_msgSender(), amount);
     }
 
     function getCompliance(address account)
@@ -57,6 +63,12 @@ contract PTBAEAllowanceToken is ERC20, AccessControl {
         return (period, balanceOf(account), surrendered[account]);
     }
 
+    function endPeriod() external onlyRole(REGULATOR_ROLE) {
+        require(!isEnded, "already ended");
+        isEnded = true;
+        emit PeriodEnded(period);
+    }
+
     function supportsInterface(bytes4 interfaceId)
         public
         view
@@ -64,5 +76,17 @@ contract PTBAEAllowanceToken is ERC20, AccessControl {
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
+    }
+
+    function _msgSender() internal view override(Context, ERC2771Context) returns (address) {
+        return ERC2771Context._msgSender();
+    }
+
+    function _msgData() internal view override(Context, ERC2771Context) returns (bytes calldata) {
+        return ERC2771Context._msgData();
+    }
+
+    function _contextSuffixLength() internal view override(ERC2771Context, Context) returns (uint256) {
+        return ERC2771Context._contextSuffixLength();
     }
 }

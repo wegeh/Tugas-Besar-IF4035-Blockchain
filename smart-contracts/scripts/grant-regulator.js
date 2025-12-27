@@ -5,8 +5,8 @@ const path = require("path")
 async function main() {
     const [deployer] = await hre.ethers.getSigners()
 
-    // The address from the error message
-    const USER_ADDRESS = "0x2B75471E69E1A38a7bD89800400E8a6A05e4C8Cf"
+    // Address user yang ingin dijadikan Regulator (sesuai seed.ts / wallet user)
+    const USER_ADDRESS = "0x2B75471E69E1A38a7bD89800400E8a6A05e4C8Cf";
     const INITIAL_PERIOD = parseInt(process.env.INITIAL_PERIOD || "1", 10)
 
     console.log("Granting REGULATOR_ROLE to:", USER_ADDRESS)
