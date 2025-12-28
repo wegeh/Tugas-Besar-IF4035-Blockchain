@@ -9,10 +9,31 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
-import { getPTBAEBalance, getSPEBalance, getPtbaeContract, getSpeContract, getSigner, forwarderAddress } from "@/lib/contracts"
-import { Loader2, Leaf, Factory, RefreshCw, LayoutDashboard, Send } from "lucide-react"
+import { getPTBAEBalance, getSPEBalance, getPtbaeContract, getSpeContract, getSigner, forwarderAddress, getPTBAEBalanceForPeriod } from "@/lib/contracts"
+import { Loader2, Leaf, Factory, RefreshCw, LayoutDashboard, Send, Calendar, CheckCircle, Clock } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { DashboardShell } from "@/components/dashboard-shell"
+import { getCompliancePeriods, type CompliancePeriodData } from "@/app/actions/period-actions"
+import { Badge } from "@/components/ui/badge"
+import { formatUnits } from "ethers"
+
+// Format balance from wei (18 decimals) to Ton CO2e
+function formatTon(weiValue: string): string {
+    try {
+        const formatted = formatUnits(weiValue, 18)
+        // Remove trailing zeros after decimal
+        const num = parseFloat(formatted)
+        return num.toLocaleString('id-ID', { maximumFractionDigits: 2 })
+    } catch {
+        return "0"
+    }
+}
+
+interface PeriodAllocation {
+    year: number
+    balance: string
+    isActive: boolean
+}
 
 export default function CompanyDashboard() {
     const { data: session } = useSession()
@@ -29,18 +50,58 @@ export default function CompanyDashboard() {
     const [surrenderAmount, setSurrenderAmount] = useState("")
     const [retireAmount, setRetireAmount] = useState("")
     const [tokenId, setTokenId] = useState("1") // Default SPE Token ID
+    const [periodAllocations, setPeriodAllocations] = useState<PeriodAllocation[]>([])
+    const [allocationsLoading, setAllocationsLoading] = useState(false)
 
     useEffect(() => {
         async function fetchData() {
             if (address) {
-                const ptbae = await getPTBAEBalance(address)
+                // Get total PTBAE by summing all period balances
+                const periods = await getCompliancePeriods()
+                let totalPtbae = BigInt(0)
+                for (const period of periods) {
+                    const balance = await getPTBAEBalanceForPeriod(address, period.year)
+                    totalPtbae += BigInt(balance)
+                }
+                setPtbaeBalance(totalPtbae.toString())
+
+                // SPE balance
                 const spe = await getSPEBalance(address, Number(tokenId))
-                setPtbaeBalance(ptbae)
                 setSpeBalance(spe)
             }
         }
         fetchData()
     }, [address, refreshKey, tokenId])
+
+    // Fetch per-period allocations (Hybrid: DB for periods, SC for balances)
+    useEffect(() => {
+        async function fetchAllocations() {
+            if (!address) return
+            setAllocationsLoading(true)
+            try {
+                // Step 1: Get periods from Database
+                const periods = await getCompliancePeriods()
+
+                // Step 2: For each period, get balance from Smart Contract
+                const allocations: PeriodAllocation[] = await Promise.all(
+                    periods.map(async (period) => {
+                        const balance = await getPTBAEBalanceForPeriod(address, period.year)
+                        return {
+                            year: period.year,
+                            balance,
+                            isActive: period.isActive
+                        }
+                    })
+                )
+                setPeriodAllocations(allocations)
+            } catch (error) {
+                console.error("Error fetching allocations:", error)
+            } finally {
+                setAllocationsLoading(false)
+            }
+        }
+        fetchAllocations()
+    }, [address, refreshKey])
 
     const handleSurrender = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -116,6 +177,7 @@ export default function CompanyDashboard() {
 
     const menuItems = [
         { id: "overview", label: "Overview", icon: LayoutDashboard },
+        { id: "allocations", label: "Allocations", icon: Calendar },
         { id: "compliance", label: "Compliance", icon: Factory },
         { id: "offset", label: "Offsetting", icon: Leaf },
         { id: "reporting", label: "Reporting", icon: Send },
@@ -147,7 +209,7 @@ export default function CompanyDashboard() {
                                     <Factory className="h-4 w-4 text-slate-400" />
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-2xl font-bold">{ptbaeBalance} Units</div>
+                                    <div className="text-2xl font-bold">{formatTon(ptbaeBalance)} Ton</div>
                                     <p className="text-xs text-slate-400">Emission Allowance (Ton CO2e)</p>
                                 </CardContent>
                             </Card>
@@ -157,11 +219,90 @@ export default function CompanyDashboard() {
                                     <Leaf className="h-4 w-4 text-green-200" />
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-2xl font-bold">{speBalance} Credits</div>
+                                    <div className="text-2xl font-bold">{formatTon(speBalance)} Ton</div>
                                     <p className="text-xs text-green-200">Carbon Offset Credits (Token ID: {tokenId})</p>
                                 </CardContent>
                             </Card>
                         </div>
+                    </div>
+                )}
+
+                {shellTab === "allocations" && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h1 className="text-3xl font-bold">PTBAE Allocations</h1>
+                                <p className="text-muted-foreground">
+                                    View your emission allowance allocations per compliance period
+                                </p>
+                            </div>
+                            <Button variant="outline" size="icon" onClick={() => setRefreshKey(p => p + 1)}>
+                                <RefreshCw className={`h-4 w-4 ${allocationsLoading ? 'animate-spin' : ''}`} />
+                            </Button>
+                        </div>
+
+                        {allocationsLoading ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : periodAllocations.length === 0 ? (
+                            <Card>
+                                <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                                    <Calendar className="h-12 w-12 mb-4 opacity-50" />
+                                    <p>No compliance periods found.</p>
+                                    <p className="text-sm">Allocations will appear here once the regulator creates a period.</p>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <div className="grid gap-4">
+                                {periodAllocations.map((allocation) => (
+                                    <Card key={allocation.year} className={allocation.isActive ? "border-green-500/50" : ""}>
+                                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2 rounded-full ${allocation.isActive ? 'bg-green-100 dark:bg-green-900' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                                                    <Calendar className={`h-5 w-5 ${allocation.isActive ? 'text-green-600' : 'text-gray-500'}`} />
+                                                </div>
+                                                <div>
+                                                    <CardTitle className="text-lg">Period {allocation.year}</CardTitle>
+                                                    <CardDescription>Compliance Year {allocation.year}</CardDescription>
+                                                </div>
+                                            </div>
+                                            <Badge variant={allocation.isActive ? "default" : "secondary"} className="flex items-center gap-1">
+                                                {allocation.isActive ? (
+                                                    <>
+                                                        <Clock className="h-3 w-3" />
+                                                        Active
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle className="h-3 w-3" />
+                                                        Ended
+                                                    </>
+                                                )}
+                                            </Badge>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-3xl font-bold">{formatTon(allocation.balance)}</span>
+                                                <span className="text-muted-foreground">Ton CO2e</span>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Emission allowance allocated for this period
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Data Source Info */}
+                        <Card className="bg-muted/50">
+                            <CardContent className="py-4">
+                                <p className="text-xs text-muted-foreground">
+                                    <strong>Data Sources:</strong> Period list from Database • Balances from Smart Contract (PTBAEAllowanceToken.balanceOf)
+                                </p>
+                            </CardContent>
+                        </Card>
                     </div>
                 )}
 

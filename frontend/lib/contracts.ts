@@ -63,6 +63,14 @@ export function getRpcProvider(): Provider {
   return new JsonRpcProvider(rpcUrl)
 }
 
+/**
+ * Get a read-only provider that ALWAYS connects to the local RPC.
+ * Use this for balance queries and other read operations to avoid MetaMask network issues.
+ */
+export function getReadOnlyProvider(): Provider {
+  return new JsonRpcProvider(rpcUrl)
+}
+
 export async function getSigner(): Promise<Signer> {
   const provider = getRpcProvider()
   if (provider instanceof BrowserProvider) {
@@ -94,7 +102,7 @@ export function getPtbaeContract(providerOrSigner: Provider | Signer, address?: 
 // --- Helper Functions ---
 
 export async function getSPEBalance(address: string, tokenId: number = 1): Promise<string> {
-  const provider = getRpcProvider()
+  const provider = getReadOnlyProvider()
   const contract = getSpeContract(provider)
   try {
     const balance = await contract.balanceOf(address, tokenId)
@@ -106,8 +114,10 @@ export async function getSPEBalance(address: string, tokenId: number = 1): Promi
 }
 
 export async function getPTBAEBalance(address: string): Promise<string> {
-  const provider = getRpcProvider()
+  const provider = getReadOnlyProvider()
   const contract = getPtbaeContract(provider)
+  const addr = await contract.getAddress()
+  console.log(`[Debug] Fetching PTBAE Balance for ${address} on Contract ${addr}`)
   try {
     const balance = await contract.balanceOf(address)
     return balance.toString() // Returns raw amount (wei), easier to format in UI
@@ -120,7 +130,7 @@ export async function getPTBAEBalance(address: string): Promise<string> {
 
 
 export async function getCurrentPeriod(): Promise<number> {
-  const provider = getRpcProvider()
+  const provider = getReadOnlyProvider()
   const contract = getPtbaeContract(provider)
 
   // Check if contract exists to avoid BAD_DATA error
@@ -143,3 +153,43 @@ export async function getCurrentPeriod(): Promise<number> {
     return 0
   }
 }
+
+/**
+ * Get the PTBAEAllowanceToken address for a specific period from the Factory.
+ * Data source: Smart Contract (PTBAEFactory.tokenByPeriod)
+ */
+export async function getTokenAddressForPeriod(period: number): Promise<string | null> {
+  const provider = getReadOnlyProvider()
+  const factory = getFactoryContract(provider)
+  try {
+    const tokenAddress = await factory.tokenByPeriod(period)
+    if (tokenAddress === "0x0000000000000000000000000000000000000000") {
+      return null
+    }
+    return tokenAddress
+  } catch (error) {
+    console.error(`Error fetching token address for period ${period}:`, error)
+    return null
+  }
+}
+
+/**
+ * Get PTBAE balance for a specific user and period.
+ * Data source: Smart Contract (PTBAEAllowanceToken.balanceOf)
+ */
+export async function getPTBAEBalanceForPeriod(address: string, period: number): Promise<string> {
+  const tokenAddress = await getTokenAddressForPeriod(period)
+  if (!tokenAddress) {
+    return "0"
+  }
+  const provider = getReadOnlyProvider()
+  const contract = getPtbaeContract(provider, tokenAddress)
+  try {
+    const balance = await contract.balanceOf(address)
+    return balance.toString()
+  } catch (error) {
+    console.error(`Error fetching PTBAE balance for period ${period}:`, error)
+    return "0"
+  }
+}
+

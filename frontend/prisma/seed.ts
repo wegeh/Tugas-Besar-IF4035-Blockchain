@@ -18,9 +18,10 @@ async function main() {
     const RELAYER = process.env.RELAYER
 
     // Configuration Arrays
+    // Only personal wallet is registered as a user for login
     const REGULATORS = [
         {
-            walletAddress: VALIDATOR ?? '0x2B75471E69E1A38a7bD89800400E8a6A05e4C8Cf',
+            walletAddress: '0x2B75471E69E1A38a7bD89800400E8a6A05e4C8Cf',
             companyName: 'Kementerian Lingkungan Hidup',
             email: 'admin@klhk.go.id'
         }
