@@ -3,6 +3,7 @@
 **/cache/
 .env
 chain/geth-data/
+chain/ipfs_data/
 chain/password.txt
 
 chain/**/*.log

@@ -95,4 +95,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     session: {
         strategy: "jwt",
     },
+    trustHost: true,
+    // Allow HTTP in development/local production
+    useSecureCookies: process.env.NODE_ENV === "production" && process.env.NEXTAUTH_URL?.startsWith("https"),
 })

@@ -88,7 +88,7 @@ export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof User
 export const CompliancePeriodScalarFieldEnum = {
   year: 'year',
   tokenAddress: 'tokenAddress',
-  isActive: 'isActive',
+  status: 'status',
   createdAt: 'createdAt'
 } as const
 

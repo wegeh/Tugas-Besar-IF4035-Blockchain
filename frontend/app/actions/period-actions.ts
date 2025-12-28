@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache"
 export interface CompliancePeriodData {
     year: number
     tokenAddress: string
-    isActive: boolean
+    status: string // ACTIVE, AUDIT, ENDED
     createdAt: Date
 }
 
@@ -31,7 +31,7 @@ export async function startNewPeriod(year: number, tokenAddress: string) {
             data: {
                 year,
                 tokenAddress,
-                isActive: true
+                status: "ACTIVE"
             }
         })
         revalidatePath("/dashboard/regulator")
@@ -51,17 +51,30 @@ export async function getPeriodTokenAddress(year: number) {
     return period?.tokenAddress || null
 }
 
-export async function endPeriod(year: number) {
-    try {
-        await prisma.compliancePeriod.update({
-            where: { year },
-            data: { isActive: false }
-        })
-        revalidatePath("/dashboard/regulator")
-        revalidatePath(`/dashboard/regulator/${year}`)
-        return { success: true }
-    } catch (error) {
-        console.error("Failed to end period:", error)
-        return { success: false, error: "Failed to end period" }
+export async function updatePeriodStatus(year: number, status: "AUDIT" | "ENDED") {
+    console.log(`[Action] updatePeriodStatus called for year ${year} -> ${status}`)
+    const MAX_RETRIES = 3;
+    let attempt = 0;
+
+    while (attempt < MAX_RETRIES) {
+        try {
+            await prisma.compliancePeriod.update({
+                where: { year },
+                data: { status }
+            })
+            console.log(`[Action] DB update successful (Attempt ${attempt + 1})`)
+            revalidatePath("/dashboard/regulator")
+            revalidatePath(`/dashboard/regulator/${year}`)
+            return { success: true }
+        } catch (error) {
+            console.error(`[Attempt ${attempt + 1}] Failed to update period status to ${status}:`, error)
+            attempt++;
+            if (attempt === MAX_RETRIES) {
+                return { success: false, error: "Failed to update period status after multiple retries" }
+            }
+            // Wait 500ms before retry
+            await new Promise(res => setTimeout(res, 500));
+        }
     }
+    return { success: false, error: "Unexpected error loop exit" }
 }

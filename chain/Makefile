@@ -25,10 +25,10 @@ all: reset init up
 .PHONY: reset
 reset:
 	@echo ">> Stopping containers"
-	@if [ -f $(COMPOSE) ]; then docker compose down -v || true; fi
-	@docker rm -f $(CONTAINER) >/dev/null 2>&1 || true
+	-@docker compose down -v
+	-@docker rm -f $(CONTAINER)
 	@echo ">> Removing old data"
-	@rm -rf $(DATA_DIR) $(GENESIS) $(PASSWORD) .validator .relayer
+	@python cleanup.py
 
 # ===== INIT =====
 .PHONY: init
@@ -36,21 +36,7 @@ init: accounts genesis compose init-chain
 
 .PHONY: accounts
 accounts:
-	@echo ">> Creating password file"
-	@printf '%s' "$(PASSWORD_VALUE)" > $(PASSWORD)
-	@mkdir -p $(DATA_DIR)
-	@echo ">> Creating validator account"
-	@VALIDATOR=$$(docker run --rm -v "$(CURDIR)":/data -w //data $(IMAGE) \
-		account new --datadir ./$(DATA_DIR) --password ./$(PASSWORD) \
-		| sed -n 's/.*Public address of the key:[[:space:]]*//p' | head -n 1); \
-	echo $$VALIDATOR > .validator; \
-	echo "   Validator = $$VALIDATOR"
-	@echo ">> Creating relayer account"
-	@RELAYER=$$(docker run --rm -v "$(CURDIR)":/data -w //data $(IMAGE) \
-		account new --datadir ./$(DATA_DIR) --password ./$(PASSWORD) \
-		| sed -n 's/.*Public address of the key:[[:space:]]*//p' | head -n 1); \
-	echo $$RELAYER > .relayer; \
-	echo "   Relayer   = $$RELAYER"
+	@python init_chain.py accounts
 
 .PHONY: genesis
 genesis:
@@ -64,15 +50,18 @@ compose:
 
 .PHONY: init-chain
 init-chain:
-	@echo ">> Initializing chain"
-	@docker run --rm -v "$(CURDIR)":/data -w //data $(IMAGE) \
-		--datadir ./$(DATA_DIR) init ./$(GENESIS)
+	@python init_chain.py init-chain
 
 # ===== RUN =====
 .PHONY: up
 up:
 	@echo ">> Starting geth"
 	@docker compose up -d
+	@echo ">> Configuring IPFS CORS"
+	@sleep 5
+	@docker exec carbon-ipfs ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\""*\""]" || echo "IPFS config warning"
+	@docker exec carbon-ipfs ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods "[\""PUT\"", \""POST\""]" || echo "IPFS config warning"
+	@docker restart carbon-ipfs
 	@echo ">> Done"
 	@echo "Validator: $$(cat .validator)"
 	@echo "Relayer  : $$(cat .relayer)"

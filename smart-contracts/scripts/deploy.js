@@ -65,8 +65,14 @@ async function main() {
   // ===== Deploy PTBAEFactory =====
   // This factory will automatically deploy the initial PTBAEAllowanceToken for INITIAL_PERIOD
   const PTBAEFactory = await hre.ethers.getContractFactory("PTBAEFactory")
-  // Pass forwarder address to factory
-  const factory = await PTBAEFactory.deploy(deployer.address, deployer.address, INITIAL_PERIOD, forwarderAddr)
+  // Pass forwarder and oracle address to factory
+  const factory = await PTBAEFactory.deploy(
+    deployer.address,  // admin
+    deployer.address,  // regulator
+    INITIAL_PERIOD,
+    forwarderAddr,
+    oracleAddr         // MRV Oracle for verified emissions
+  )
   await factory.waitForDeployment()
   const factoryAddr = await factory.getAddress()
   console.log("PTBAEFactory deployed:", factoryAddr)
@@ -84,6 +90,17 @@ async function main() {
   await (await ptbae.allocate(deployer.address, INITIAL_PTBAE_AMOUNT)).wait()
   console.log(`Allocated PTBAE amount ${INITIAL_PTBAE_AMOUNT} to ${deployer.address} for period ${INITIAL_PERIOD}`)
 
+  // ===== Deploy EmissionSubmission =====
+  const EmissionSubmission = await hre.ethers.getContractFactory("EmissionSubmission")
+  const submission = await EmissionSubmission.deploy(
+    deployer.address,   // admin
+    deployer.address,   // regulator (for demo, Oracle role)
+    forwarderAddr       // trusted forwarder
+  )
+  await submission.waitForDeployment()
+  const submissionAddr = await submission.getAddress()
+  console.log("EmissionSubmission deployed:", submissionAddr)
+
   // ===== Save deployments =====
   const deployments = {
     network: hre.network.name,
@@ -93,6 +110,7 @@ async function main() {
     SPEGRKToken: { address: speAddr, tokenId, initialHolder: deployer.address },
     PTBAEFactory: { address: factoryAddr, initialPeriod: INITIAL_PERIOD },
     PTBAEAllowanceToken: { address: ptbaeAddr, period: INITIAL_PERIOD, initialHolder: deployer.address },
+    EmissionSubmission: { address: submissionAddr },
   }
 
   const outDir = path.join(__dirname, "..", "deployments")
@@ -108,14 +126,18 @@ async function main() {
     const ptbaeArtifact = path.join(__dirname, "..", "artifacts", "contracts", "PTBAEAllowanceToken.sol", "PTBAEAllowanceToken.json")
     const factoryArtifact = path.join(__dirname, "..", "artifacts", "contracts", "PTBAEFactory.sol", "PTBAEFactory.json")
     const forwarderArtifact = path.join(__dirname, "..", "artifacts", "contracts", "Forwarder.sol", "Forwarder.json")
+    const oracleArtifact = path.join(__dirname, "..", "artifacts", "contracts", "MRVOracle.sol", "MRVOracle.json")
+    const submissionArtifact = path.join(__dirname, "..", "artifacts", "contracts", "EmissionSubmission.sol", "EmissionSubmission.json")
 
     fs.copyFileSync(speArtifact, path.join(frontendAbiDir, "SPEGRKToken.json"))
     fs.copyFileSync(ptbaeArtifact, path.join(frontendAbiDir, "PTBAEAllowanceToken.json"))
     fs.copyFileSync(factoryArtifact, path.join(frontendAbiDir, "PTBAEFactory.json"))
     fs.copyFileSync(forwarderArtifact, path.join(frontendAbiDir, "Forwarder.json"))
+    fs.copyFileSync(oracleArtifact, path.join(frontendAbiDir, "MRVOracle.json"))
+    fs.copyFileSync(submissionArtifact, path.join(frontendAbiDir, "EmissionSubmission.json"))
 
     fs.writeFileSync(path.join(frontendAbiDir, "addresses.local.json"), JSON.stringify(deployments, null, 2))
-    console.log("Copied ABIs (including Factory) and addresses.local.json into frontend/abi")
+    console.log("Copied ABIs (including EmissionSubmission) and addresses.local.json into frontend/abi")
   } else {
     console.log("frontend/abi not found; skipped copying ABIs")
   }

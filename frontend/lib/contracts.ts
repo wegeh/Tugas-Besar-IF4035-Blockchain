@@ -2,6 +2,8 @@ import { BrowserProvider, Contract, JsonRpcProvider, type Provider, type Signer,
 import factoryAbi from "@/abi/PTBAEFactory.json"
 import speAbi from "@/abi/SPEGRKToken.json"
 import ptbaeAbi from "@/abi/PTBAEAllowanceToken.json"
+import oracleAbi from "@/abi/MRVOracle.json"
+import submissionAbi from "@/abi/EmissionSubmission.json"
 import addresses from "@/abi/addresses.local.json"
 
 const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || (addresses as any).rpc || "http://127.0.0.1:8545"
@@ -11,6 +13,8 @@ const speAddress = (addresses as any).SPEGRKToken?.address || process.env.NEXT_P
 const factoryAddress = (addresses as any).PTBAEFactory?.address || process.env.NEXT_PUBLIC_PTBAE_FACTORY_ADDRESS || ""
 const defaultPtbaeAddress = (addresses as any).PTBAEAllowanceToken?.address || process.env.NEXT_PUBLIC_PTBAE_ADDRESS || ""
 export const forwarderAddress = (addresses as any).Forwarder?.address || ""
+export const oracleAddress = (addresses as any).MRVOracle?.address || ""
+export const submissionAddress = (addresses as any).EmissionSubmission?.address || ""
 export const DEBUG_FACTORY_ADDRESS = factoryAddress
 
 // Local PoA network configuration
@@ -94,9 +98,19 @@ export function getSpeContract(providerOrSigner: Provider | Signer): Contract {
 }
 
 export function getPtbaeContract(providerOrSigner: Provider | Signer, address?: string): Contract {
-  const targetAddress = address || defaultPtbaeAddress
-  if (!targetAddress) throw new Error("PTBAE contract address not set")
-  return new Contract(targetAddress, ptbaeAbi.abi, providerOrSigner)
+  const addr = address || defaultPtbaeAddress
+  if (!addr) throw new Error("PTBAE contract address not set")
+  return new Contract(addr, ptbaeAbi.abi, providerOrSigner)
+}
+
+export function getSubmissionContract(providerOrSigner: Provider | Signer): Contract {
+  if (!submissionAddress) throw new Error("EmissionSubmission contract address not set")
+  return new Contract(submissionAddress, submissionAbi.abi, providerOrSigner)
+}
+
+export function getOracleContract(providerOrSigner: Provider | Signer): Contract {
+  if (!oracleAddress) throw new Error("MRVOracle contract address not set")
+  return new Contract(oracleAddress, oracleAbi.abi, providerOrSigner)
 }
 
 // --- Helper Functions ---
@@ -193,3 +207,125 @@ export async function getPTBAEBalanceForPeriod(address: string, period: number):
   }
 }
 
+// --- Compliance Lifecycle Functions ---
+
+export enum PeriodStatus {
+  ACTIVE = 0,
+  AUDIT = 1,
+  ENDED = 2
+}
+
+export enum ComplianceStatus {
+  NO_DATA = 0,
+  PENDING = 1,
+  COMPLIANT = 2
+}
+
+export interface ComplianceInfo {
+  period: number
+  balance: string
+  surrendered: string
+  verifiedEmission: string
+  debt: string
+  status: ComplianceStatus
+}
+
+/**
+ * Get the status of a specific compliance period.
+ * Data source: Smart Contract (PTBAEAllowanceToken.status)
+ */
+export async function getPeriodStatus(period: number): Promise<PeriodStatus> {
+  const tokenAddress = await getTokenAddressForPeriod(period)
+  if (!tokenAddress) {
+    throw new Error(`No contract found for period ${period}`)
+  }
+  const provider = getReadOnlyProvider()
+  const contract = getPtbaeContract(provider, tokenAddress)
+  try {
+    const status = await contract.status()
+    return Number(status) as PeriodStatus
+  } catch (error) {
+    console.error(`Error fetching status for period ${period}:`, error)
+    return PeriodStatus.ENDED // Safe fallback
+  }
+}
+/**
+ * Get compliance info for a user in a specific period.
+ * Data source: Smart Contract (PTBAEAllowanceToken.getCompliance)
+ */
+export async function getComplianceInfo(period: number, userAddress: string): Promise<ComplianceInfo | null> {
+  const tokenAddress = await getTokenAddressForPeriod(period)
+  if (!tokenAddress) {
+    return null
+  }
+  const provider = getReadOnlyProvider()
+  const contract = getPtbaeContract(provider, tokenAddress)
+  try {
+    const [p, balance, surrenderedAmt, verifiedEmission, debt, cStatus] = await contract.getCompliance(userAddress)
+    return {
+      period: Number(p),
+      balance: balance.toString(),
+      surrendered: surrenderedAmt.toString(),
+      verifiedEmission: verifiedEmission.toString(),
+      debt: debt.toString(),
+      status: Number(cStatus) as ComplianceStatus
+    }
+  } catch (error) {
+    console.error(`Error fetching compliance info for period ${period}:`, error)
+    return null
+  }
+}
+
+/**
+ * Get verified emission for a user in a specific period from Oracle.
+ */
+export async function getVerifiedEmission(period: number, userAddress: string): Promise<string> {
+  const provider = getReadOnlyProvider()
+  const oracle = getOracleContract(provider)
+  try {
+    const emission = await oracle.getVerifiedEmission(period, userAddress)
+    return emission.toString()
+  } catch (error) {
+    console.error(`Error fetching verified emission:`, error)
+    return "0"
+  }
+}
+
+export interface SubmissionData {
+  period: number
+  ipfsHash: string
+  submittedAt: number
+  status: number // 0=PENDING, 1=VERIFIED, 2=REJECTED
+  verifiedEmission: string
+}
+
+/**
+ * Get all submissions for a user across multiple periods.
+ * Data source: Smart Contract (EmissionSubmission.getSubmission)
+ */
+export async function getUserSubmissions(userAddress: string, periods: number[]): Promise<SubmissionData[]> {
+  const provider = getReadOnlyProvider()
+  const contract = getSubmissionContract(provider)
+  const submissions: SubmissionData[] = []
+
+  for (const period of periods) {
+    try {
+      const [ipfsHash, submittedAt, status, verifiedEmission] = await contract.getSubmission(period, userAddress)
+
+      // Only include if user has submitted for this period (ipfsHash will be empty string if not submitted)
+      if (ipfsHash && ipfsHash.length > 0) {
+        submissions.push({
+          period,
+          ipfsHash,
+          submittedAt: Number(submittedAt),
+          status: Number(status),
+          verifiedEmission: verifiedEmission.toString()
+        })
+      }
+    } catch (error) {
+      console.error(`Error fetching submission for period ${period}:`, error)
+    }
+  }
+
+  return submissions.sort((a, b) => b.period - a.period) // Sort by period descending
+}

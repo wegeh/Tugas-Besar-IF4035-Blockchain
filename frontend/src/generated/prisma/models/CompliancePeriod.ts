@@ -37,21 +37,21 @@ export type CompliancePeriodSumAggregateOutputType = {
 export type CompliancePeriodMinAggregateOutputType = {
   year: number | null
   tokenAddress: string | null
-  isActive: boolean | null
+  status: string | null
   createdAt: Date | null
 }
 
 export type CompliancePeriodMaxAggregateOutputType = {
   year: number | null
   tokenAddress: string | null
-  isActive: boolean | null
+  status: string | null
   createdAt: Date | null
 }
 
 export type CompliancePeriodCountAggregateOutputType = {
   year: number
   tokenAddress: number
-  isActive: number
+  status: number
   createdAt: number
   _all: number
 }
@@ -68,21 +68,21 @@ export type CompliancePeriodSumAggregateInputType = {
 export type CompliancePeriodMinAggregateInputType = {
   year?: true
   tokenAddress?: true
-  isActive?: true
+  status?: true
   createdAt?: true
 }
 
 export type CompliancePeriodMaxAggregateInputType = {
   year?: true
   tokenAddress?: true
-  isActive?: true
+  status?: true
   createdAt?: true
 }
 
 export type CompliancePeriodCountAggregateInputType = {
   year?: true
   tokenAddress?: true
-  isActive?: true
+  status?: true
   createdAt?: true
   _all?: true
 }
@@ -176,7 +176,7 @@ export type CompliancePeriodGroupByArgs<ExtArgs extends runtime.Types.Extensions
 export type CompliancePeriodGroupByOutputType = {
   year: number
   tokenAddress: string
-  isActive: boolean
+  status: string
   createdAt: Date
   _count: CompliancePeriodCountAggregateOutputType | null
   _avg: CompliancePeriodAvgAggregateOutputType | null
@@ -206,7 +206,7 @@ export type CompliancePeriodWhereInput = {
   NOT?: Prisma.CompliancePeriodWhereInput | Prisma.CompliancePeriodWhereInput[]
   year?: Prisma.IntFilter<"CompliancePeriod"> | number
   tokenAddress?: Prisma.StringFilter<"CompliancePeriod"> | string
-  isActive?: Prisma.BoolFilter<"CompliancePeriod"> | boolean
+  status?: Prisma.StringFilter<"CompliancePeriod"> | string
   createdAt?: Prisma.DateTimeFilter<"CompliancePeriod"> | Date | string
   allocations?: Prisma.AllocationListRelationFilter
 }
@@ -214,7 +214,7 @@ export type CompliancePeriodWhereInput = {
 export type CompliancePeriodOrderByWithRelationInput = {
   year?: Prisma.SortOrder
   tokenAddress?: Prisma.SortOrder
-  isActive?: Prisma.SortOrder
+  status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   allocations?: Prisma.AllocationOrderByRelationAggregateInput
 }
@@ -225,7 +225,7 @@ export type CompliancePeriodWhereUniqueInput = Prisma.AtLeast<{
   OR?: Prisma.CompliancePeriodWhereInput[]
   NOT?: Prisma.CompliancePeriodWhereInput | Prisma.CompliancePeriodWhereInput[]
   tokenAddress?: Prisma.StringFilter<"CompliancePeriod"> | string
-  isActive?: Prisma.BoolFilter<"CompliancePeriod"> | boolean
+  status?: Prisma.StringFilter<"CompliancePeriod"> | string
   createdAt?: Prisma.DateTimeFilter<"CompliancePeriod"> | Date | string
   allocations?: Prisma.AllocationListRelationFilter
 }, "year">
@@ -233,7 +233,7 @@ export type CompliancePeriodWhereUniqueInput = Prisma.AtLeast<{
 export type CompliancePeriodOrderByWithAggregationInput = {
   year?: Prisma.SortOrder
   tokenAddress?: Prisma.SortOrder
-  isActive?: Prisma.SortOrder
+  status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   _count?: Prisma.CompliancePeriodCountOrderByAggregateInput
   _avg?: Prisma.CompliancePeriodAvgOrderByAggregateInput
@@ -248,14 +248,14 @@ export type CompliancePeriodScalarWhereWithAggregatesInput = {
   NOT?: Prisma.CompliancePeriodScalarWhereWithAggregatesInput | Prisma.CompliancePeriodScalarWhereWithAggregatesInput[]
   year?: Prisma.IntWithAggregatesFilter<"CompliancePeriod"> | number
   tokenAddress?: Prisma.StringWithAggregatesFilter<"CompliancePeriod"> | string
-  isActive?: Prisma.BoolWithAggregatesFilter<"CompliancePeriod"> | boolean
+  status?: Prisma.StringWithAggregatesFilter<"CompliancePeriod"> | string
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"CompliancePeriod"> | Date | string
 }
 
 export type CompliancePeriodCreateInput = {
   year: number
   tokenAddress: string
-  isActive?: boolean
+  status?: string
   createdAt?: Date | string
   allocations?: Prisma.AllocationCreateNestedManyWithoutPeriodInput
 }
@@ -263,7 +263,7 @@ export type CompliancePeriodCreateInput = {
 export type CompliancePeriodUncheckedCreateInput = {
   year: number
   tokenAddress: string
-  isActive?: boolean
+  status?: string
   createdAt?: Date | string
   allocations?: Prisma.AllocationUncheckedCreateNestedManyWithoutPeriodInput
 }
@@ -271,7 +271,7 @@ export type CompliancePeriodUncheckedCreateInput = {
 export type CompliancePeriodUpdateInput = {
   year?: Prisma.IntFieldUpdateOperationsInput | number
   tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
-  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   allocations?: Prisma.AllocationUpdateManyWithoutPeriodNestedInput
 }
@@ -279,7 +279,7 @@ export type CompliancePeriodUpdateInput = {
 export type CompliancePeriodUncheckedUpdateInput = {
   year?: Prisma.IntFieldUpdateOperationsInput | number
   tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
-  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   allocations?: Prisma.AllocationUncheckedUpdateManyWithoutPeriodNestedInput
 }
@@ -287,28 +287,28 @@ export type CompliancePeriodUncheckedUpdateInput = {
 export type CompliancePeriodCreateManyInput = {
   year: number
   tokenAddress: string
-  isActive?: boolean
+  status?: string
   createdAt?: Date | string
 }
 
 export type CompliancePeriodUpdateManyMutationInput = {
   year?: Prisma.IntFieldUpdateOperationsInput | number
   tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
-  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type CompliancePeriodUncheckedUpdateManyInput = {
   year?: Prisma.IntFieldUpdateOperationsInput | number
   tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
-  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type CompliancePeriodCountOrderByAggregateInput = {
   year?: Prisma.SortOrder
   tokenAddress?: Prisma.SortOrder
-  isActive?: Prisma.SortOrder
+  status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -319,14 +319,14 @@ export type CompliancePeriodAvgOrderByAggregateInput = {
 export type CompliancePeriodMaxOrderByAggregateInput = {
   year?: Prisma.SortOrder
   tokenAddress?: Prisma.SortOrder
-  isActive?: Prisma.SortOrder
+  status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
 export type CompliancePeriodMinOrderByAggregateInput = {
   year?: Prisma.SortOrder
   tokenAddress?: Prisma.SortOrder
-  isActive?: Prisma.SortOrder
+  status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -347,10 +347,6 @@ export type IntFieldUpdateOperationsInput = {
   divide?: number
 }
 
-export type BoolFieldUpdateOperationsInput = {
-  set?: boolean
-}
-
 export type CompliancePeriodCreateNestedOneWithoutAllocationsInput = {
   create?: Prisma.XOR<Prisma.CompliancePeriodCreateWithoutAllocationsInput, Prisma.CompliancePeriodUncheckedCreateWithoutAllocationsInput>
   connectOrCreate?: Prisma.CompliancePeriodCreateOrConnectWithoutAllocationsInput
@@ -368,14 +364,14 @@ export type CompliancePeriodUpdateOneRequiredWithoutAllocationsNestedInput = {
 export type CompliancePeriodCreateWithoutAllocationsInput = {
   year: number
   tokenAddress: string
-  isActive?: boolean
+  status?: string
   createdAt?: Date | string
 }
 
 export type CompliancePeriodUncheckedCreateWithoutAllocationsInput = {
   year: number
   tokenAddress: string
-  isActive?: boolean
+  status?: string
   createdAt?: Date | string
 }
 
@@ -398,14 +394,14 @@ export type CompliancePeriodUpdateToOneWithWhereWithoutAllocationsInput = {
 export type CompliancePeriodUpdateWithoutAllocationsInput = {
   year?: Prisma.IntFieldUpdateOperationsInput | number
   tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
-  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type CompliancePeriodUncheckedUpdateWithoutAllocationsInput = {
   year?: Prisma.IntFieldUpdateOperationsInput | number
   tokenAddress?: Prisma.StringFieldUpdateOperationsInput | string
-  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -443,7 +439,7 @@ export type CompliancePeriodCountOutputTypeCountAllocationsArgs<ExtArgs extends 
 export type CompliancePeriodSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   year?: boolean
   tokenAddress?: boolean
-  isActive?: boolean
+  status?: boolean
   createdAt?: boolean
   allocations?: boolean | Prisma.CompliancePeriod$allocationsArgs<ExtArgs>
   _count?: boolean | Prisma.CompliancePeriodCountOutputTypeDefaultArgs<ExtArgs>
@@ -452,25 +448,25 @@ export type CompliancePeriodSelect<ExtArgs extends runtime.Types.Extensions.Inte
 export type CompliancePeriodSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   year?: boolean
   tokenAddress?: boolean
-  isActive?: boolean
+  status?: boolean
   createdAt?: boolean
 }, ExtArgs["result"]["compliancePeriod"]>
 
 export type CompliancePeriodSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   year?: boolean
   tokenAddress?: boolean
-  isActive?: boolean
+  status?: boolean
   createdAt?: boolean
 }, ExtArgs["result"]["compliancePeriod"]>
 
 export type CompliancePeriodSelectScalar = {
   year?: boolean
   tokenAddress?: boolean
-  isActive?: boolean
+  status?: boolean
   createdAt?: boolean
 }
 
-export type CompliancePeriodOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"year" | "tokenAddress" | "isActive" | "createdAt", ExtArgs["result"]["compliancePeriod"]>
+export type CompliancePeriodOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"year" | "tokenAddress" | "status" | "createdAt", ExtArgs["result"]["compliancePeriod"]>
 export type CompliancePeriodInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   allocations?: boolean | Prisma.CompliancePeriod$allocationsArgs<ExtArgs>
   _count?: boolean | Prisma.CompliancePeriodCountOutputTypeDefaultArgs<ExtArgs>
@@ -486,7 +482,7 @@ export type $CompliancePeriodPayload<ExtArgs extends runtime.Types.Extensions.In
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     year: number
     tokenAddress: string
-    isActive: boolean
+    status: string
     createdAt: Date
   }, ExtArgs["result"]["compliancePeriod"]>
   composites: {}
@@ -914,7 +910,7 @@ export interface Prisma__CompliancePeriodClient<T, Null = never, ExtArgs extends
 export interface CompliancePeriodFieldRefs {
   readonly year: Prisma.FieldRef<"CompliancePeriod", 'Int'>
   readonly tokenAddress: Prisma.FieldRef<"CompliancePeriod", 'String'>
-  readonly isActive: Prisma.FieldRef<"CompliancePeriod", 'Boolean'>
+  readonly status: Prisma.FieldRef<"CompliancePeriod", 'String'>
   readonly createdAt: Prisma.FieldRef<"CompliancePeriod", 'DateTime'>
 }
     

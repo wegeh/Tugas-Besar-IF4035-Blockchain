@@ -1,18 +1,14 @@
 {
   "name": "oracle-service",
   "version": "1.0.0",
-  "description": "",
+  "description": "Oracle service for Carbon Ledger ID - listens to blockchain events and pushes verified emissions",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "dev": "node --watch index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
     "ethers": "^6.16.0",
-    "express": "^5.2.1"
+    "dotenv": "^16.4.0"
   }
 }

@@ -15,10 +15,22 @@ services:
       --http.corsdomain="*"
       --http.vhosts="*"
       --allow-insecure-unlock
-      --unlock "0x74F7e0d5bBc9464a0D706B1C3f6ba05aFBd3acF6,0x23171eC635A21560cc046E8FcC7A9Fac83C1C8b9"
+      --unlock "0x6677Bbbffe26318FA48e06525f9058F19e3f8089,0xA1720428e9EAF174f92451A5d77F14747770372B"
       --password /data/password.txt
-      --miner.etherbase "0x74F7e0d5bBc9464a0D706B1C3f6ba05aFBd3acF6"
+      --miner.etherbase "0x6677Bbbffe26318FA48e06525f9058F19e3f8089"
       --mine
       --syncmode full
       --ipcdisable
       --verbosity 3
+
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: carbon-ipfs
+    ports:
+      - "5001:5001"   # API
+      - "8080:8080"   # Gateway
+    volumes:
+      - ./ipfs_data:/data/ipfs
+    environment:
+      - IPFS_PROFILE=server
+    restart: unless-stopped

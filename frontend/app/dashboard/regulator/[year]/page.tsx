@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { getUnallocatedCompanies, getAllocatedCompanies, recordAllocation } from "@/app/actions/allocation"
-import { getPeriodTokenAddress, endPeriod, getCompliancePeriods } from "@/app/actions/period-actions"
+import { getPeriodTokenAddress, updatePeriodStatus, getCompliancePeriods } from "@/app/actions/period-actions"
 import { useContracts } from "@/lib/use-contracts"
 import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
-import { forwarderAddress, getPtbaeContract, DEBUG_FACTORY_ADDRESS } from "@/lib/contracts"
+import { forwarderAddress, oracleAddress, getPtbaeContract, getOracleContract, PeriodStatus, getComplianceInfo, ComplianceStatus } from "@/lib/contracts"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,8 +21,9 @@ import {
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { Loader2, ArrowLeft, CheckCircle2, LayoutDashboard, FileText, Send, Ban } from "lucide-react"
+import { Loader2, ArrowLeft, CheckCircle2, LayoutDashboard, FileText, Send, Ban, Lock, ShieldCheck, FileCheck } from "lucide-react"
 import Link from "next/link"
 import {
     AlertDialog,
@@ -51,7 +52,7 @@ export default function PeriodDetailPage() {
 
     // Data State
     const [tokenAddress, setTokenAddress] = useState<string>("")
-    const [isActive, setIsActive] = useState(true)
+    const [status, setStatus] = useState<PeriodStatus>(PeriodStatus.ACTIVE)
     const [unallocated, setUnallocated] = useState<any[]>([])
     const [allocated, setAllocated] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
@@ -61,7 +62,14 @@ export default function PeriodDetailPage() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [amount, setAmount] = useState("")
     const [processing, setProcessing] = useState(false)
-    const [endingPeriod, setEndingPeriod] = useState(false)
+    const [lifecycleLoading, setLifecycleLoading] = useState(false)
+
+    // MRV State
+    const [mrvCompanyAddress, setMrvCompanyAddress] = useState("")
+    const [mrvEmissionAmount, setMrvEmissionAmount] = useState("")
+    const [mrvAttestationId, setMrvAttestationId] = useState("")
+    const [mrvProcessing, setMrvProcessing] = useState(false)
+    const [complianceData, setComplianceData] = useState<Map<string, { emission: string, surrendered: string, status: ComplianceStatus }>>(new Map())
 
     useEffect(() => {
         loadData()
@@ -70,9 +78,6 @@ export default function PeriodDetailPage() {
     async function loadData() {
         setLoading(true)
         try {
-            // Fetch period details alongside allocation data
-            // We can reuse getCompliancePeriods and find current year, or assuming we need a specific 'getPeriod(year)'
-            // For now, let's filter from list to avoid creating new query if list is small.
             const allPeriods = await getCompliancePeriods()
             const currentPeriod = allPeriods.find(p => p.year === year)
 
@@ -84,7 +89,16 @@ export default function PeriodDetailPage() {
             setUnallocated(unallocData)
             setAllocated(allocData)
             setTokenAddress(addr || "")
-            if (currentPeriod) setIsActive(currentPeriod.isActive)
+
+            // Map DB string status to Enum
+            if (currentPeriod) {
+                switch (currentPeriod.status) {
+                    case "ACTIVE": setStatus(PeriodStatus.ACTIVE); break;
+                    case "AUDIT": setStatus(PeriodStatus.AUDIT); break;
+                    case "ENDED": setStatus(PeriodStatus.ENDED); break;
+                    default: setStatus(PeriodStatus.ACTIVE);
+                }
+            }
 
         } catch (error) {
             console.error(error)
@@ -107,52 +121,77 @@ export default function PeriodDetailPage() {
         else setSelectedIds(new Set(unallocated.map(c => c.id)))
     }
 
-    // Handlers
-    async function handleEndPeriod() {
+    // Lifecycle Handlers
+    async function handleSetAudit() {
         if (!tokenAddress) return
-        setEndingPeriod(true)
+        setLifecycleLoading(true)
         try {
             const signer = await getSigner()
-
-            // 1. Get Contract Instance
             const contract = getPtbaeContract(signer, tokenAddress)
 
-            // 2. Prepare Meta-Tx Data for endPeriod()
-            // endPeriod() takes no arguments
-            const data = contract.interface.encodeFunctionData("endPeriod", [])
+            // Fix: Check status first to avoid revert if already in Audit
+            const currentStatus = await contract.status()
+            console.log("Current Contract Status:", currentStatus.toString())
 
-            toast.info("Signing 'End Period' request...")
+            if (Number(currentStatus) === 1) {
+                toast.info("Contract already in Audit Phase. Syncing database...")
+                // Skip transaction, just update DB
+            } else {
+                const data = contract.interface.encodeFunctionData("setAudit", [])
+                toast.info("Signing 'Start Audit' request...")
+                const { request, signature } = await createMetaTx(signer, forwarderAddress, tokenAddress, data)
+                toast.info("Relaying transaction...")
+                const txResult = await sendMetaTx(request, signature)
+                const provider = signer.provider
+                if (provider) await provider.waitForTransaction(txResult.txHash)
+            }
+
+            await updatePeriodStatus(year, "AUDIT")
+            toast.success("Period is now in Audit Mode")
+            setStatus(PeriodStatus.AUDIT)
+        } catch (error: any) {
+            console.error("Set Audit Error:", error)
+            toast.error("Failed to start audit phase.")
+        } finally {
+            setLifecycleLoading(false)
+        }
+    }
+
+    async function handleFinalize() {
+        if (!tokenAddress) return
+        setLifecycleLoading(true)
+        try {
+            const signer = await getSigner()
+            const contract = getPtbaeContract(signer, tokenAddress)
+            const data = contract.interface.encodeFunctionData("finalize", [])
+
+            toast.info("Signing 'Finalize' request...")
             const { request, signature } = await createMetaTx(signer, forwarderAddress, tokenAddress, data)
 
             toast.info("Relaying transaction...")
             const txResult = await sendMetaTx(request, signature)
-            toast.success("End Period Transaction Relayed! Hash: " + txResult.txHash)
 
-            // Wait for tx confirmation
             const provider = signer.provider
             if (provider) await provider.waitForTransaction(txResult.txHash)
 
-            // 3. Update DB
-            await endPeriod(year)
-
-            toast.success("Period Ended successfully")
-            setIsActive(false)
+            await updatePeriodStatus(year, "ENDED")
+            toast.success("Period Finalized!")
+            setStatus(PeriodStatus.ENDED)
         } catch (error: any) {
-            console.error("End Period Error:", error)
-            const msg = error.message.toLowerCase()
-            if (msg.includes("period ended") || msg.includes("already ended")) {
-                toast.error("This period is already ended.")
-            } else {
-                toast.error("Failed to end period. Please check usage or try again.")
-            }
+            console.error("Finalize Error:", error)
+            toast.error("Failed to finalize period.")
         } finally {
-            setEndingPeriod(false)
+            setLifecycleLoading(false)
         }
     }
 
     async function handleAllocate() {
         if (!amount || selectedIds.size === 0) {
             toast.error("Please select companies and enter an amount")
+            return
+        }
+        if (status !== PeriodStatus.ACTIVE) {
+            toast.error("Allocations are only allowed in ACTIVE period")
             return
         }
         if (!tokenAddress) {
@@ -163,26 +202,18 @@ export default function PeriodDetailPage() {
         setProcessing(true)
         try {
             const signer = await getSigner()
-
-            // 1. Get Contract Instance
             const contract = getPtbaeContract(signer, tokenAddress)
-
-            // 2. Prepare Data
             const selectedCompanies = unallocated.filter(c => selectedIds.has(c.id))
             const addresses = selectedCompanies.map(c => c.walletAddress)
             const amountWei = BigInt(amount) * BigInt(10 ** 18)
-
-            // 3. Encode & Sign
             const data = contract.interface.encodeFunctionData("batchAllocate", [addresses, amountWei])
 
             toast.info("Signing request...")
             const { request, signature } = await createMetaTx(signer, forwarderAddress, tokenAddress, data)
 
-            // 4. Send to Relayer
             toast.info("Sending to Relayer...")
             const txResult = await sendMetaTx(request, signature)
 
-            // 5. Record in DB
             await recordAllocation(year, addresses, amount, txResult.txHash)
 
             toast.success("Allocation Successful!")
@@ -192,19 +223,140 @@ export default function PeriodDetailPage() {
 
         } catch (error: any) {
             console.error("Allocation Error:", error)
-            const msg = error.message.toLowerCase()
-
-            if (msg.includes("period ended")) {
-                toast.error("Allocation failed: The period has ended.")
-            } else if (msg.includes("user rejected") || msg.includes("rejected transaction")) {
-                toast.error("Transaction rejected by user.")
-            } else {
-                toast.error("Allocation failed. Please try again.")
-            }
+            toast.error("Allocation failed: " + error.message)
         } finally {
             setProcessing(false)
         }
     }
+
+    // MRV Handler
+    async function handleSetVerifiedEmission() {
+        if (!mrvCompanyAddress || !mrvEmissionAmount) {
+            toast.error("Please enter company address and emission amount")
+            return
+        }
+        if (!oracleAddress) {
+            toast.error("Oracle address not configured")
+            return
+        }
+
+        setMrvProcessing(true)
+        try {
+            const signer = await getSigner()
+            const oracle = getOracleContract(signer)
+
+            // For demo purposes, create a simple attestation first if needed
+            // In production, attestation would come from MRV verification process
+            let attestationId = mrvAttestationId
+            if (!attestationId) {
+                // Create demo attestation
+                const docHash = require("ethers").keccak256(require("ethers").toUtf8Bytes(`mrv-doc-${year}-${mrvCompanyAddress}`))
+                const metaHash = require("ethers").keccak256(require("ethers").toUtf8Bytes(`meta-${Date.now()}`))
+                attestationId = require("ethers").keccak256(require("ethers").toUtf8Bytes(`attestation-${year}-${mrvCompanyAddress}-${Date.now()}`))
+
+                // First attest the MRV document
+                toast.info("Creating MRV attestation...")
+                const attestData = oracle.interface.encodeFunctionData("attestMRV", [attestationId, docHash, metaHash])
+                const { request: attestReq, signature: attestSig } = await createMetaTx(signer, forwarderAddress, oracleAddress, attestData)
+                await sendMetaTx(attestReq, attestSig)
+            }
+
+            // Set verified emission
+            const emissionWei = BigInt(mrvEmissionAmount) * BigInt(10 ** 18)
+            toast.info("Setting verified emission...")
+            const data = oracle.interface.encodeFunctionData("setVerifiedEmission", [
+                year,
+                mrvCompanyAddress,
+                emissionWei,
+                attestationId
+            ])
+
+            const { request, signature } = await createMetaTx(signer, forwarderAddress, oracleAddress, data)
+            const txResult = await sendMetaTx(request, signature)
+
+            toast.success(`Verified emission set! Tx: ${txResult.txHash.slice(0, 10)}...`)
+            setMrvCompanyAddress("")
+            setMrvEmissionAmount("")
+            setMrvAttestationId("")
+
+            // Refresh compliance data
+            await loadComplianceData()
+        } catch (error: any) {
+            console.error("Set Verified Emission Error:", error)
+            toast.error("Failed: " + (error.message || "Unknown error"))
+        } finally {
+            setMrvProcessing(false)
+        }
+    }
+
+    async function loadComplianceData() {
+        if (!tokenAddress || allocated.length === 0) return
+
+        const data = new Map<string, { emission: string, surrendered: string, status: ComplianceStatus }>()
+
+        for (const alloc of allocated) {
+            try {
+                const info = await getComplianceInfo(year, alloc.company.walletAddress)
+                if (info) {
+                    data.set(alloc.company.walletAddress.toLowerCase(), {
+                        emission: (BigInt(info.verifiedEmission) / BigInt(10 ** 18)).toString(),
+                        surrendered: (BigInt(info.surrendered) / BigInt(10 ** 18)).toString(),
+                        status: info.status
+                    })
+                }
+            } catch (e) {
+                console.error(`Error loading compliance for ${alloc.company.walletAddress}:`, e)
+            }
+        }
+
+        setComplianceData(data)
+    }
+
+    // Load compliance data when allocated companies change
+    useEffect(() => {
+        if (tokenAddress && allocated.length > 0) {
+            loadComplianceData()
+        }
+    }, [tokenAddress, allocated])
+
+    // NEW: Auto-Sync DB Status on Mount
+    useEffect(() => {
+        async function checkSync() {
+            if (!tokenAddress) return
+            try {
+                const signer = await getSigner()
+                const contract = getPtbaeContract(signer, tokenAddress)
+                const onChainStatus = await contract.status()
+                const onChainStatusNum = Number(onChainStatus)
+
+                // Map Enum to String
+                let statusStr = "ACTIVE";
+                if (onChainStatusNum === 1) statusStr = "AUDIT";
+                if (onChainStatusNum === 2) statusStr = "ENDED";
+
+                // Compare with current status state (which is PeriodStatus enum in component)
+                // Convert component status enum to string for comparison
+                let currentStatusStr = "ACTIVE";
+                if (status === PeriodStatus.AUDIT) currentStatusStr = "AUDIT";
+                if (status === PeriodStatus.ENDED) currentStatusStr = "ENDED";
+
+                if (statusStr !== currentStatusStr) {
+                    console.log(`[Sync] Mismatch detected. Contract: ${statusStr}, DB: ${currentStatusStr}. Syncing...`)
+                    // @ts-ignore
+                    await updatePeriodStatus(year, statusStr)
+                    setStatus(statusStr === "AUDIT" ? PeriodStatus.AUDIT : statusStr === "ENDED" ? PeriodStatus.ENDED : PeriodStatus.ACTIVE)
+                    toast.warning("Synced status with blockchain.")
+                }
+            } catch (e) {
+                console.error("Sync verification failed:", e)
+            }
+        }
+        checkSync()
+    }, [tokenAddress, status, year])
+
+    const isActive = status === PeriodStatus.ACTIVE
+    const isAudit = status === PeriodStatus.AUDIT
+    const isEnded = status === PeriodStatus.ENDED
 
     return (
         <DashboardShell activeTab={activeTab} setActiveTab={setActiveTab} menuItems={menuItems}>
@@ -218,44 +370,75 @@ export default function PeriodDetailPage() {
                         <div>
                             <div className="flex items-center gap-2">
                                 <h2 className="text-3xl font-bold tracking-tight">Period {year}</h2>
-                                {!isActive && <Badge variant="destructive">Ended</Badge>}
-                                {isActive && <Badge variant="default" className="bg-green-600">Active</Badge>}
+                                {isActive && <Badge className="bg-green-600">Active</Badge>}
+                                {isAudit && <Badge className="bg-yellow-600">Audit Phase</Badge>}
+                                {isEnded && <Badge variant="destructive">Finalized</Badge>}
                             </div>
                             <p className="text-muted-foreground font-mono text-sm mt-1">{tokenAddress || "Loading Address..."}</p>
                         </div>
                     </div>
 
-                    {isActive && (
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="destructive">
-                                    <Ban className="mr-2 h-4 w-4" /> End Period
-                                </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        Ending the period will prevent further allocations in the interface.
-                                        You can still interact with the smart contract directly if needed.
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleEndPeriod} className="bg-red-600 hover:bg-red-700">
-                                        {endingPeriod && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                        End Period
-                                    </AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                    )}
+                    <div className="flex space-x-2">
+                        {isActive && (
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="outline" className="border-yellow-600 text-yellow-700 hover:bg-yellow-50">
+                                        <ShieldCheck className="mr-2 h-4 w-4" /> Start Audit Phase
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Start Audit Phase?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            This will DISABLE transfers/trading but ALLOW surrendering.
+                                            Companies should use this time to surrender their quotas.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={handleSetAudit} className="bg-yellow-600 hover:bg-yellow-700">
+                                            {lifecycleLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Start Audit
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        )}
+
+                        {(isActive || isAudit) && !isEnded && (
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="destructive">
+                                        <Lock className="mr-2 h-4 w-4" /> Finalize Period
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Finalize Period?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            This will completely FREEZE the period.
+                                            No more surrenders or transfers allowed.
+                                            Use this only after compliance deadline.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={handleFinalize} className="bg-red-600 hover:bg-red-700">
+                                            {lifecycleLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Finalize
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        )}
+                    </div>
                 </div>
 
                 <Tabs defaultValue="pending">
                     <TabsList>
                         <TabsTrigger value="pending">Pending Allocation ({unallocated.length})</TabsTrigger>
                         <TabsTrigger value="allocated">Allocated History ({allocated.length})</TabsTrigger>
+                        <TabsTrigger value="mrv">MRV Verification</TabsTrigger>
                     </TabsList>
 
                     {/* Pending Tab */}
@@ -341,6 +524,69 @@ export default function PeriodDetailPage() {
                                         {allocated.length === 0 && !loading && (
                                             <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">No history yet.</TableCell></TableRow>
                                         )}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* MRV / Submissions Tab - Now Read-Only (Oracle handles verification externally) */}
+                    <TabsContent value="mrv" className="space-y-4">
+                        <Card className="bg-blue-50 border-blue-200">
+                            <CardContent className="py-4">
+                                <p className="text-sm text-blue-800">
+                                    <strong>ℹ️ Info:</strong> Verified emissions are now set by the <strong>Oracle Service</strong> (external).<br />
+                                    Companies submit reports via their dashboard → Oracle verifies → Tagihan otomatis di-set.
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        {/* Compliance Status Table - Read Only */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Company Compliance Status</CardTitle>
+                                <CardDescription>
+                                    Data di-update otomatis oleh Oracle setelah memverifikasi submission dari Company.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Company</TableHead>
+                                            <TableHead>Wallet</TableHead>
+                                            <TableHead>Verified Emission</TableHead>
+                                            <TableHead>Surrendered</TableHead>
+                                            <TableHead>Status</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {allocated.map(a => {
+                                            const compliance = complianceData.get(a.company.walletAddress.toLowerCase())
+                                            return (
+                                                <TableRow key={a.id}>
+                                                    <TableCell className="font-medium">{a.company.companyName}</TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="font-mono text-xs">
+                                                            {a.company.walletAddress.slice(0, 10)}...
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell>{compliance?.emission || '0'} Ton</TableCell>
+                                                    <TableCell>{compliance?.surrendered || '0'} Ton</TableCell>
+                                                    <TableCell>
+                                                        {compliance?.status === ComplianceStatus.COMPLIANT && (
+                                                            <Badge className="bg-green-600">COMPLIANT</Badge>
+                                                        )}
+                                                        {compliance?.status === ComplianceStatus.PENDING && (
+                                                            <Badge className="bg-yellow-600">PENDING</Badge>
+                                                        )}
+                                                        {(!compliance || compliance?.status === ComplianceStatus.NO_DATA) && (
+                                                            <Badge variant="secondary">NO DATA</Badge>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            )
+                                        })}
                                     </TableBody>
                                 </Table>
                             </CardContent>

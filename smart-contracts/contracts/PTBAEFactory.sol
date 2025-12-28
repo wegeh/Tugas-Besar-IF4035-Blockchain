@@ -9,15 +9,23 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
     bytes32 public constant REGULATOR_ROLE = keccak256("REGULATOR_ROLE");
 
     uint32 public currentPeriod;
+    address public immutable oracle;
     mapping(uint32 => address) public tokenByPeriod;
-
-
 
     event PeriodOpened(uint32 indexed period, address token);
 
-    constructor(address admin, address regulator, uint32 initialPeriod, address _forwarder)
+    constructor(
+        address admin, 
+        address regulator, 
+        uint32 initialPeriod, 
+        address _forwarder,
+        address _oracle
+    )
         ERC2771Context(_forwarder)
     {
+        require(_oracle != address(0), "oracle=0");
+        oracle = _oracle;
+        
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGULATOR_ROLE, regulator);
 
@@ -35,7 +43,8 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
             regulator, // Admin of the token
             regulator, // Regulator of the token
             p,
-            trustedForwarder()
+            trustedForwarder(),
+            oracle      // MRV Oracle address
         );
         tokenByPeriod[p] = address(token);
         emit PeriodOpened(p, address(token));

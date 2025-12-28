@@ -57,6 +57,18 @@ config = f"""services:
       --syncmode full
       --ipcdisable
       --verbosity 3
+
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: carbon-ipfs
+    ports:
+      - "5001:5001"   # API
+      - "8080:8080"   # Gateway
+    volumes:
+      - ./ipfs_data:/data/ipfs
+    environment:
+      - IPFS_PROFILE=server
+    restart: unless-stopped
 """
 
 with open("docker-compose.yml", "w") as f:

@@ -11,6 +11,14 @@ async function main() {
     console.log('Seeding database...')
 
     // Clear existing users
+    // Clear existing data (Order matters due to FK)
+    try {
+        await prisma.allocation.deleteMany()
+        console.log('Deleted existing allocations.')
+    } catch (e) {
+        console.log('No allocations to delete or error:', e)
+    }
+
     await prisma.user.deleteMany()
     console.log('Deleted existing users.')
 
