@@ -13,7 +13,7 @@ except FileNotFoundError:
 
 # Config
 CHAIN_ID = 1515
-PERIOD = 5
+PERIOD = 1
 EPOCH = 30000
 PREFUND_ETH = 1000000
 GENESIS_FILE = "genesis.json"

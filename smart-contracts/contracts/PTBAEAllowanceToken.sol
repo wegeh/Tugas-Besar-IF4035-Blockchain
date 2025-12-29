@@ -28,6 +28,21 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
     event StatusChanged(uint32 period, PeriodStatus status);
     event ComplianceUpdated(address indexed user, ComplianceStatus status);
 
+    // Custom Errors
+    error PeriodNotActive();
+    error InvalidRecipient();
+    error InvalidAmount();
+    error NoRecipients();
+    error ArrayLengthMismatch();
+    error SurrenderOnlyInAuditPhase();
+    error VintageTooNew(uint16 vintage, uint32 period);
+    error NoVerifiedEmissionData();
+    error AlreadySurrendered();
+    error InsufficientPTBAEBalance(uint256 available, uint256 required);
+    error NotActive();
+    error AlreadyEnded();
+    error TransferRestricted();
+
     constructor(
         address admin, 
         address regulator, 
@@ -47,17 +62,17 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
     }
 
     function allocate(address to, uint256 amount) external onlyRole(REGULATOR_ROLE) {
-        require(status == PeriodStatus.ACTIVE, "period not active");
-        require(to != address(0), "to=0");
-        require(amount > 0, "amount=0");
+        if (status != PeriodStatus.ACTIVE) revert PeriodNotActive();
+        if (to == address(0)) revert InvalidRecipient();
+        if (amount == 0) revert InvalidAmount();
         _mint(to, amount);
         emit Allocated(to, amount);
     }
 
     function batchAllocate(address[] calldata recipients, uint256 amount) external onlyRole(REGULATOR_ROLE) {
-        require(status == PeriodStatus.ACTIVE, "period not active");
-        require(amount > 0, "amount=0");
-        require(recipients.length > 0, "no recipients");
+        if (status != PeriodStatus.ACTIVE) revert PeriodNotActive();
+        if (amount == 0) revert InvalidAmount();
+        if (recipients.length == 0) revert NoRecipients();
         
         for (uint256 i = 0; i < recipients.length; i++) {
             address to = recipients[i];
@@ -82,8 +97,8 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
     function surrenderWithOffset(uint256[] calldata speIds, uint256[] calldata speAmounts) external {
         uint256 totalOffset = 0;
 
-        require(speIds.length == speAmounts.length, "length mismatch");
-        require(status == PeriodStatus.AUDIT, "surrender only allowed in audit phase");
+        if (speIds.length != speAmounts.length) revert ArrayLengthMismatch();
+        if (status != PeriodStatus.AUDIT) revert SurrenderOnlyInAuditPhase();
 
         // Process each SPE token
         for (uint256 i = 0; i < speIds.length; i++) {
@@ -93,7 +108,7 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
             if (amt > 0) {
                 // 1. Validate Vintage Year <= Compliance Period
                 (SPEGRKToken.UnitMeta memory meta, , , , , ) = speToken.getUnit(id);
-                require(meta.vintageYear <= period, "token vintage too new");
+                if (meta.vintageYear > period) revert VintageTooNew(meta.vintageYear, period);
 
                 // 2. Transfer SPE from User to Contract
                 speToken.safeTransferFrom(_msgSender(), address(this), id, amt, "");
@@ -111,14 +126,14 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
 
     function _performSurrender(address user, uint256 offsetAmount) internal {
         // 1. Check phase
-        require(status == PeriodStatus.AUDIT, "surrender only allowed in audit phase");
+        if (status != PeriodStatus.AUDIT) revert SurrenderOnlyInAuditPhase();
         
         // 2. Get verified emission (tagihan) from Oracle
         uint256 tagihan = oracle.getVerifiedEmission(period, user);
-        require(tagihan > 0, "no verified emission data");
+        if (tagihan == 0) revert NoVerifiedEmissionData();
         
         // 3. Check if already paid
-        require(!hasSurrendered[user], "already surrendered");
+        if (hasSurrendered[user]) revert AlreadySurrendered();
         
         // 4. Calculate remaining to pay with PTBAE
         uint256 remainingToPay = 0;
@@ -128,7 +143,8 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
 
         // 5. Check PTBAE balance if needed
         if (remainingToPay > 0) {
-            require(balanceOf(user) >= remainingToPay, "insufficient PTBAE balance");
+            uint256 bal = balanceOf(user);
+            if (bal < remainingToPay) revert InsufficientPTBAEBalance(bal, remainingToPay);
             _burn(user, remainingToPay);
         }
         
@@ -175,13 +191,13 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
     }
 
     function setAudit() external onlyRole(REGULATOR_ROLE) {
-        require(status == PeriodStatus.ACTIVE, "not active");
+        if (status != PeriodStatus.ACTIVE) revert NotActive();
         status = PeriodStatus.AUDIT;
         emit StatusChanged(period, status);
     }
 
     function finalize() external onlyRole(REGULATOR_ROLE) {
-        require(status != PeriodStatus.ENDED, "already ended");
+        if (status == PeriodStatus.ENDED) revert AlreadyEnded();
         status = PeriodStatus.ENDED;
         emit StatusChanged(period, status);
     }
@@ -190,7 +206,7 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
     function _update(address from, address to, uint256 value) internal override(ERC20) {
         if (from != address(0) && to != address(0)) {
             // Normal Transfer: Allowed ONLY in ACTIVE
-            require(status == PeriodStatus.ACTIVE, "transfer restricted");
+            if (status != PeriodStatus.ACTIVE) revert TransferRestricted();
         }
         // Mint (from=0) and Burn (to=0) logic is controlled by allocate/surrender functions
         super._update(from, to, value);

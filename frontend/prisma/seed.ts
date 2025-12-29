@@ -107,6 +107,30 @@ async function main() {
 
             console.log('Using Deployer for roles:', await deployer.getAddress())
 
+            // --- FUND USER ACCOUNTS ---
+            console.log('\n--- Funding User Accounts ---')
+            const FUND_AMOUNT = ethers.parseEther("100") // 100 ETH each
+            const allUsers = [...REGULATORS, ...COMPANIES]
+
+            for (const user of allUsers) {
+                try {
+                    const balance = await provider.getBalance(user.walletAddress)
+                    if (balance < FUND_AMOUNT) {
+                        console.log(`Funding ${user.companyName} (${user.walletAddress})...`)
+                        const tx = await deployer.sendTransaction({
+                            to: user.walletAddress,
+                            value: FUND_AMOUNT
+                        })
+                        await tx.wait()
+                        console.log('  Funded!')
+                    } else {
+                        console.log(`${user.companyName} already has sufficient balance.`)
+                    }
+                } catch (fundErr: any) {
+                    console.error(`  Failed to fund ${user.walletAddress}:`, fundErr.message)
+                }
+            }
+
             const REGULATOR_ROLE = ethers.id("REGULATOR_ROLE")
 
             // Instantiate Contracts

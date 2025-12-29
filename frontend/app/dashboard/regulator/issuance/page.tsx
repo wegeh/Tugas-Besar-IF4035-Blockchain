@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Leaf } from "lucide-react"
 import { toast } from "sonner"
-import { getSigner, getAllGreenProjects, type ProjectData, type UnitMeta, getSpeContract } from "@/lib/contracts"
+import { getSigner, getAllGreenProjects, type ProjectData, type UnitMeta, getSpeContract, isTokenIssued } from "@/lib/contracts"
 import {
     Table,
     TableBody,
@@ -17,18 +17,44 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { solidityPackedKeccak256, getAddress } from "ethers"
+import { decodeContractError, getErrorDetails } from "@/lib/error-decoder"
 
 export default function IssuancePage() {
     const { address } = useAccount()
     const [loadingRows, setLoadingRows] = useState<Record<number, boolean>>({})
+    const [issuedRows, setIssuedRows] = useState<Record<number, boolean>>({}) // Track already issued
     const [submissions, setSubmissions] = useState<{ user: string, data: ProjectData }[]>([])
     const [loadingData, setLoadingData] = useState(false)
+
+    // Calculate tokenId from project data
+    const getTokenIdFromData = (data: ProjectData): bigint => {
+        const parts = data.ipfsHash.split("|");
+        const projectId = parts[1] || "";
+        const vintageNum = parseInt(parts[2]) || 0;
+        const uniqueProjectKey = solidityPackedKeccak256(
+            ["string", "uint16"],
+            [projectId, vintageNum]
+        );
+        return BigInt(uniqueProjectKey);
+    }
 
     const loadSubmissions = async () => {
         setLoadingData(true)
         try {
             const projects = await getAllGreenProjects()
             setSubmissions(projects)
+
+            // Check which tokens have already been issued
+            const issuedStatus: Record<number, boolean> = {}
+            for (let i = 0; i < projects.length; i++) {
+                try {
+                    const tokenId = getTokenIdFromData(projects[i].data)
+                    issuedStatus[i] = await isTokenIssued(tokenId)
+                } catch {
+                    issuedStatus[i] = false
+                }
+            }
+            setIssuedRows(issuedStatus)
         } catch (error) {
             console.error("Error loading submissions:", error)
             toast.error("Failed to load project submissions")
@@ -143,12 +169,9 @@ export default function IssuancePage() {
         } catch (error: any) {
             console.error("=== DIRECT ISSUE ERROR ===")
             console.error("Full Error:", error)
-            console.error("Error Name:", error.errorName)
-            console.error("Error Args:", error.errorArgs)
-            console.error("Error Code:", error.code)
-            console.error("Error Data:", error.data)
-            console.error("Error Reason:", error.reason)
-            toast.error("Direct Issuance Failed", { description: error.shortMessage || error.message || "Unknown error" });
+            console.error("Error Details:", getErrorDetails(error))
+            const userMessage = decodeContractError(error)
+            toast.error("Issuance Gagal", { description: userMessage });
         } finally {
             setLoadingRows(prev => ({ ...prev, [idx]: false }))
         }
@@ -226,7 +249,11 @@ export default function IssuancePage() {
                                             </TableCell>
                                             <TableCell>{getStatusBadge(data.status)}</TableCell>
                                             <TableCell>
-                                                {data.status === 1 && amount > 0 ? (
+                                                {issuedRows[idx] ? (
+                                                    <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                                                        Already Issued
+                                                    </Badge>
+                                                ) : data.status === 1 && amount > 0 ? (
                                                     <Button
                                                         size="sm"
                                                         className="bg-green-600 hover:bg-green-700"

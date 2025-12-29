@@ -102,21 +102,45 @@ export async function POST(req: NextRequest) {
 
         // 4. Execute Transaction
         console.log("Executing with request:", request)
+        console.log("Signature:", signature)
 
-        // ERC2771Forwarder v5 expects 'ForwardRequestData' struct + signature.
-        // We pass it as a Tuple to avoid any object property mismatches.
-        // Struct: (from, to, value, gas, deadline, data, signature)
-        const reqTuple = [
-            request.from,
-            request.to,
-            request.value,
-            request.gas,
-            request.deadline,
-            request.data,
-            signature
-        ];
+        // ERC2771Forwarder v5 expects 'ForwardRequestData' struct.
+        // Struct fields: from, to, value, gas, deadline, data, signature
+        // The struct does NOT include 'nonce' field, but signature was made WITH nonce.
+        const forwardRequestData = {
+            from: request.from,
+            to: request.to,
+            value: BigInt(request.value),
+            gas: BigInt(request.gas),
+            deadline: Number(request.deadline),
+            data: request.data,
+            signature: signature
+        }
 
-        const tx = await forwarder.execute(reqTuple, { gasLimit: 5000000 })
+        console.log("ForwardRequestData:", forwardRequestData)
+
+        // Verify on-chain nonce matches
+        const onChainNonce = await forwarder.nonces(request.from)
+        console.log("On-chain nonce:", onChainNonce.toString())
+        console.log("Request nonce:", request.nonce)
+        if (onChainNonce.toString() !== request.nonce.toString()) {
+            console.error("NONCE MISMATCH!")
+            return NextResponse.json({
+                error: `Nonce mismatch: on-chain=${onChainNonce}, request=${request.nonce}`
+            }, { status: 400 })
+        }
+
+        // Verify signature on-chain
+        const isValid = await forwarder.verify(forwardRequestData)
+        console.log("forwarder.verify():", isValid)
+        if (!isValid) {
+            console.error("SIGNATURE INVALID ON-CHAIN")
+            return NextResponse.json({
+                error: "Signature verification failed on-chain. Please refresh and try again."
+            }, { status: 400 })
+        }
+
+        const tx = await forwarder.execute(forwardRequestData, { gasLimit: 5000000 })
         console.log("Relay Tx Hash:", tx.hash)
 
         const receipt = await tx.wait()

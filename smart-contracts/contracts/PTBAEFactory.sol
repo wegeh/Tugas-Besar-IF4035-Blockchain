@@ -8,6 +8,11 @@ import "./PTBAEAllowanceToken.sol";
 contract PTBAEFactory is AccessControl, ERC2771Context {
     bytes32 public constant REGULATOR_ROLE = keccak256("REGULATOR_ROLE");
 
+    // Custom Errors
+    error InvalidOracleAddress();
+    error InvalidSPEAddress();
+    error PeriodAlreadyExists(uint32 period);
+
     uint32 public currentPeriod;
     address public immutable oracle;
     address public immutable speTokenAddress;
@@ -25,8 +30,8 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
     )
         ERC2771Context(_forwarder)
     {
-        require(_oracle != address(0), "oracle=0");
-        require(_speToken != address(0), "spe=0");
+        if (_oracle == address(0)) revert InvalidOracleAddress();
+        if (_speToken == address(0)) revert InvalidSPEAddress();
         oracle = _oracle;
         speTokenAddress = _speToken;
         
@@ -37,7 +42,7 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
     }
 
     function openPeriod(uint32 newPeriod) external onlyRole(REGULATOR_ROLE) {
-        require(tokenByPeriod[newPeriod] == address(0), "period exists");
+        if (tokenByPeriod[newPeriod] != address(0)) revert PeriodAlreadyExists(newPeriod);
         _openPeriod(newPeriod, _msgSender());
     }
 

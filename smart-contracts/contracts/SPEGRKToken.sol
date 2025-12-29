@@ -36,6 +36,16 @@ contract SPEGRKToken is ERC1155, AccessControl, ERC2771Context {
     event SPEIssued(uint256 indexed tokenId, address indexed to, uint256 amount, bytes32 attestationId);
     event SPERetired(uint256 indexed tokenId, address indexed holder, uint256 amount);
 
+    // Custom Errors (gas efficient + better UX)
+    error InvalidRecipient();
+    error InvalidAmount();
+    error TokenAlreadyIssued(uint256 tokenId);
+    error InvalidAttestation(bytes32 attestationId);
+    error AttestationAlreadyUsed(bytes32 attestationId);
+    error MetadataMismatch(bytes32 expected, bytes32 actual);
+    error AlreadyRetired(uint256 tokenId);
+    error InsufficientBalance(uint256 available, uint256 required);
+
     constructor(string memory uri_, address admin, address regulator, address oracleAddress, address trustedForwarder) 
         ERC1155(uri_) 
         ERC2771Context(trustedForwarder)
@@ -52,22 +62,22 @@ contract SPEGRKToken is ERC1155, AccessControl, ERC2771Context {
         UnitMeta calldata meta,
         bytes32 attestationId
     ) external onlyRole(REGULATOR_ROLE) {
-        require(to != address(0), "to=0");
-        require(amount > 0, "amount=0");
+        if (to == address(0)) revert InvalidRecipient();
+        if (amount == 0) revert InvalidAmount();
 
         // tokenId = batch => only once issuance
-        require(issuedAt[tokenId] == 0, "tokenId already issued");
+        if (issuedAt[tokenId] != 0) revert TokenAlreadyIssued(tokenId);
 
         // Check attestation from external Oracle
         (bytes32 aDocHash, bytes32 aMetaHash, bool valid, ) = oracle.getAttestation(attestationId);
-        require(valid, "invalid attestation");
-        require(!usedAttestations[attestationId], "attestation used");
+        if (!valid) revert InvalidAttestation(attestationId);
+        if (usedAttestations[attestationId]) revert AttestationAlreadyUsed(attestationId);
 
         // bind meta to attestation
         bytes32 computedMetaHash = keccak256(
             abi.encode(meta.projectId, meta.vintageYear, meta.methodology, meta.registryRef)
         );
-        require(computedMetaHash == aMetaHash, "meta mismatch");
+        if (computedMetaHash != aMetaHash) revert MetadataMismatch(aMetaHash, computedMetaHash);
 
         // commit data
         unitMeta[tokenId] = meta;
@@ -85,9 +95,10 @@ contract SPEGRKToken is ERC1155, AccessControl, ERC2771Context {
     }
 
     function retireSPE(uint256 tokenId, uint256 amount) external {
-        require(amount > 0, "amount=0");
-        require(status[tokenId] == Status.ACTIVE, "already retired");
-        require(balanceOf(_msgSender(), tokenId) >= amount, "insufficient");
+        if (amount == 0) revert InvalidAmount();
+        if (status[tokenId] != Status.ACTIVE) revert AlreadyRetired(tokenId);
+        uint256 bal = balanceOf(_msgSender(), tokenId);
+        if (bal < amount) revert InsufficientBalance(bal, amount);
 
         _burn(_msgSender(), tokenId, amount);
         totalSupply[tokenId] -= amount;

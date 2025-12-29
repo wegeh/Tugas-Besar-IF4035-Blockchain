@@ -64,6 +64,11 @@ sc-deploy: sc-install
 	@echo ">> [smart-contracts] deploy to geth"
 	@cd $(SC_DIR) && python scripts/run_deploy.py
 
+.PHONY: sc-fund-users
+sc-fund-users:
+	@echo ">> [smart-contracts] funding regulator & company accounts"
+	@cd $(SC_DIR) && npx hardhat run scripts/fund-users.js --network localhost
+
 # -----------------------
 # Frontend DB (postgres + prisma)
 # -----------------------

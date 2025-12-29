@@ -99,6 +99,22 @@ export function getSpeContract(providerOrSigner: Provider | Signer): Contract {
   return new Contract(speAddress, speAbi.abi, providerOrSigner)
 }
 
+// Export SPE address for external use
+export { speAddress }
+
+/**
+ * Check if user has approved a specific operator for SPE tokens
+ */
+export async function checkSPEApproval(owner: string, operator: string): Promise<boolean> {
+  const provider = getReadOnlyProvider()
+  const contract = getSpeContract(provider)
+  try {
+    return await contract.isApprovedForAll(owner, operator)
+  } catch {
+    return false
+  }
+}
+
 export function getPtbaeContract(providerOrSigner: Provider | Signer, address?: string): Contract {
   const addr = address || defaultPtbaeAddress
   if (!addr) throw new Error("PTBAE contract address not set")
@@ -144,6 +160,67 @@ export async function getSPEBalanceBatch(address: string, tokenIds: number[]): P
   } catch (error) {
     console.error("Error fetching SPE batch balance:", error)
     return tokenIds.map(() => "0")
+  }
+}
+
+/**
+ * Check if SPE token for a project+vintage combination has already been issued
+ * @param tokenId - The tokenId (derived from keccak256(projectId, vintage))
+ * @returns true if token has been issued (exists on-chain), false otherwise
+ */
+export async function isTokenIssued(tokenId: bigint): Promise<boolean> {
+  const provider = getReadOnlyProvider()
+  const contract = getSpeContract(provider)
+  try {
+    // Check if the token exists by checking if it has any metadata
+    const unit = await contract.getUnit(tokenId)
+    // If unit exists and has been minted (vintageYear > 0), it's issued
+    return unit[0].vintageYear > 0
+  } catch {
+    // Token doesn't exist
+    return false
+  }
+}
+
+/**
+ * Get total SPE balance for a user across all token IDs
+ * Queries transfer events to find all token IDs sent to the user, then sums balances
+ */
+export async function getTotalSPEBalance(address: string): Promise<{ total: string, tokens: { tokenId: string, balance: string }[] }> {
+  const provider = getReadOnlyProvider()
+  const contract = getSpeContract(provider)
+
+  try {
+    // Query TransferSingle events where 'to' is the user address
+    const filter = contract.filters.TransferSingle(null, null, address)
+    const events = await contract.queryFilter(filter, 0, 'latest')
+
+    // Get unique token IDs
+    const tokenIdSet = new Set<string>()
+    for (const event of events) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const args = (event as any).args
+      if (args && args[3]) {
+        tokenIdSet.add(args[3].toString()) // args[3] is the tokenId
+      }
+    }
+
+    // Get balance for each token ID
+    const tokens: { tokenId: string, balance: string }[] = []
+    let total = BigInt(0)
+
+    for (const tokenIdStr of tokenIdSet) {
+      const balance = await contract.balanceOf(address, BigInt(tokenIdStr))
+      if (balance > BigInt(0)) {
+        tokens.push({ tokenId: tokenIdStr, balance: balance.toString() })
+        total += balance
+      }
+    }
+
+    return { total: total.toString(), tokens }
+  } catch (error) {
+    console.error("Error fetching total SPE balance:", error)
+    return { total: "0", tokens: [] }
   }
 }
 

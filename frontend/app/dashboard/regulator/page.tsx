@@ -59,7 +59,7 @@ export default function RegulatorDashboard() {
         }
     }
 
-    // Handlers
+    // Handlers - Using MetaTx
     async function handleOpenPeriod() {
         if (!factory) {
             toast.error("Factory contract not ready")
@@ -82,7 +82,8 @@ export default function RegulatorDashboard() {
             const data = factory.interface.encodeFunctionData("openPeriod", [yearParams])
 
             toast.info("Signing Request...")
-            const { request, signature } = await createMetaTx(signer, forwarderAddress, factoryAddress, data)
+            // Use 5M gas for openPeriod since it deploys a new PTBAEAllowanceToken contract
+            const { request, signature } = await createMetaTx(signer, forwarderAddress, factoryAddress, data, 5000000)
 
             toast.info("Sending to Relayer...")
             const txResult = await sendMetaTx(request, signature)
@@ -103,8 +104,8 @@ export default function RegulatorDashboard() {
             setNewPeriodYear("")
             loadPeriods()
         } catch (error: any) {
-            console.error(error)
-            toast.error("Failed to start period: " + (error.message || "Unknown error"))
+            console.error("Open Period Error:", error)
+            toast.error("Failed to start period: " + (error.shortMessage || error.message || "Unknown error"))
         } finally {
             setCreatingPeriod(false)
         }

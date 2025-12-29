@@ -34,8 +34,8 @@ function getMetaTxTypeData(chainId: number, verifyingContract: string) {
     }
 }
 
-async function signMetaTxRequest(signer: ethers.Signer, forwarder: any, input: any, chainId: number) {
-    const request = await buildRequest(forwarder, input)
+async function signMetaTxRequest(signer: ethers.Signer, forwarder: any, input: any, chainId: number, gasLimit: number) {
+    const request = await buildRequest(forwarder, input, gasLimit)
     const toSign = getMetaTxTypeData(chainId, await forwarder.getAddress())
 
     // Use _signTypedData if available (ethers v6), otherwise fallback or metamask direct
@@ -43,24 +43,29 @@ async function signMetaTxRequest(signer: ethers.Signer, forwarder: any, input: a
     return { signature, request }
 }
 
-async function buildRequest(forwarder: any, input: any) {
+async function buildRequest(forwarder: any, input: any, gasLimit: number = 3000000) {
     const nonce = await forwarder.nonces(input.from)
     return {
         from: input.from,
         to: input.to,
         value: 0,
-        gas: 2000000, // Reduced from 10M to ensure gasleft() > req.gas
+        gas: gasLimit, // Configurable, default 3M. Use higher (5M) for contract deploy operations
         nonce: nonce,
         deadline: Math.floor(Date.now() / 1000) + 3600, // 1 hour validity
         data: input.data,
     }
 }
 
+/**
+ * Create a meta-transaction request and signature
+ * @param gasLimit - Optional gas limit for the meta-tx (default 3M, use 5M for deploy operations like openPeriod)
+ */
 export async function createMetaTx(
     signer: ethers.Signer,
     forwarderAddress: string,
     toContract: string,
-    data: string
+    data: string,
+    gasLimit: number = 3000000
 ) {
     const from = await signer.getAddress()
     const network = await signer.provider?.getNetwork()
@@ -84,7 +89,7 @@ export async function createMetaTx(
         data,
     }
 
-    const { signature, request: signedReq } = await signMetaTxRequest(signer, forwarder, request, chainId)
+    const { signature, request: signedReq } = await signMetaTxRequest(signer, forwarder, request, chainId, gasLimit)
 
     // JSON serializable request (BigInt issues handling)
     const jsonReq = {
