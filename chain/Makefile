@@ -58,10 +58,8 @@ up:
 	@echo ">> Starting geth"
 	@docker compose up -d
 	@echo ">> Configuring IPFS CORS"
-	@sleep 5
-	@docker exec carbon-ipfs ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\""*\""]" || echo "IPFS config warning"
-	@docker exec carbon-ipfs ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods "[\""PUT\"", \""POST\""]" || echo "IPFS config warning"
-	@docker restart carbon-ipfs
+	@python -c "import time; time.sleep(5)"
+	@python configure_ipfs.py
 	@echo ">> Done"
 	@echo "Validator: $$(cat .validator)"
 	@echo "Relayer  : $$(cat .relayer)"

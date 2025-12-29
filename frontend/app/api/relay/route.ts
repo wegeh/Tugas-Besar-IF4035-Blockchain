@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
 
         // 3. Connect to Forwarder Contract
         const providerNetwork = await signer.provider?.getNetwork();
-        console.log("DEBUG: Relayer Provider Chain ID:", providerNetwork?.chainId);
+        const chainId = Number(providerNetwork?.chainId || 1515); // Fallback to 1515
+        console.log("DEBUG: Relayer Provider Chain ID:", chainId);
 
         // Explicitly cast to unknown first to avoid sizing issues with ABI type inference in some environments
         const forwarder = new ethers.Contract(addresses.Forwarder.address, ForwarderABI.abi, signer)
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
             const domain = {
                 name: "Forwarder",
                 version: "1",
-                chainId: 1515, // Hardcoded to expected chain
+                chainId: chainId,
                 verifyingContract: addresses.Forwarder.address
             }
 
@@ -91,11 +92,9 @@ export async function POST(req: NextRequest) {
             console.log("DEBUG: Request From:", request.from)
 
             if (recovered.toLowerCase() !== request.from.toLowerCase()) {
-                console.error("DEBUG: SIGNATURE MISMATCH ON SERVER")
-                // Don't fail yet, let the contract try, but this is a huge hint
+                console.error("DEBUG: SIGNATURE MISMATCH ON SERVER (Check ChainID or Nonce or TypeDef)")
             } else {
                 console.log("DEBUG: Signature Verified Off-Chain Successfully")
-                console.log("DEBUG: Signature Hex:", signature)
             }
         } catch (e) {
             console.error("DEBUG: Verification failed:", e)
@@ -104,14 +103,20 @@ export async function POST(req: NextRequest) {
         // 4. Execute Transaction
         console.log("Executing with request:", request)
 
-        // ERC2771Forwarder v5 expects a single struct argument for execute(), 
-        // and the signature is part of that struct.
-        const requestWithSignature = {
-            ...request,
-            signature: signature
-        }
+        // ERC2771Forwarder v5 expects 'ForwardRequestData' struct + signature.
+        // We pass it as a Tuple to avoid any object property mismatches.
+        // Struct: (from, to, value, gas, deadline, data, signature)
+        const reqTuple = [
+            request.from,
+            request.to,
+            request.value,
+            request.gas,
+            request.deadline,
+            request.data,
+            signature
+        ];
 
-        const tx = await forwarder.execute(requestWithSignature, { gasLimit: 10000000 })
+        const tx = await forwarder.execute(reqTuple, { gasLimit: 5000000 })
         console.log("Relay Tx Hash:", tx.hash)
 
         const receipt = await tx.wait()

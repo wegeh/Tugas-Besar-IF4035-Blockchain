@@ -299,14 +299,7 @@ export default function CompliancePage() {
                 </Card>
             )}
 
-            {/* Info Card */}
-            <Card className="bg-muted/50">
-                <CardContent className="py-4">
-                    <p className="text-sm text-muted-foreground">
-                        <strong>Alur:</strong> Regulator set tagihan (Verified Emission) → Company klik "Bayar Tagihan" → Token di-burn otomatis.
-                    </p>
-                </CardContent>
-            </Card>
+
         </div>
     )
 }

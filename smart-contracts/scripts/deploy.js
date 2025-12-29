@@ -71,7 +71,8 @@ async function main() {
     deployer.address,  // regulator
     INITIAL_PERIOD,
     forwarderAddr,
-    oracleAddr         // MRV Oracle for verified emissions
+    oracleAddr,        // MRV Oracle
+    speAddr            // SPE Address
   )
   await factory.waitForDeployment()
   const factoryAddr = await factory.getAddress()
@@ -101,6 +102,17 @@ async function main() {
   const submissionAddr = await submission.getAddress()
   console.log("EmissionSubmission deployed:", submissionAddr)
 
+  // ===== Deploy GreenProjectRegistry (New, Phase-Independent) =====
+  const GreenProjectRegistry = await hre.ethers.getContractFactory("GreenProjectRegistry")
+  const registry = await GreenProjectRegistry.deploy(
+    deployer.address,   // admin
+    deployer.address,   // regulator
+    forwarderAddr       // trusted forwarder
+  )
+  await registry.waitForDeployment()
+  const registryAddr = await registry.getAddress()
+  console.log("GreenProjectRegistry deployed:", registryAddr)
+
   // ===== Save deployments =====
   const deployments = {
     network: hre.network.name,
@@ -111,6 +123,7 @@ async function main() {
     PTBAEFactory: { address: factoryAddr, initialPeriod: INITIAL_PERIOD },
     PTBAEAllowanceToken: { address: ptbaeAddr, period: INITIAL_PERIOD, initialHolder: deployer.address },
     EmissionSubmission: { address: submissionAddr },
+    GreenProjectRegistry: { address: registryAddr },
   }
 
   const outDir = path.join(__dirname, "..", "deployments")
@@ -134,7 +147,11 @@ async function main() {
     fs.copyFileSync(factoryArtifact, path.join(frontendAbiDir, "PTBAEFactory.json"))
     fs.copyFileSync(forwarderArtifact, path.join(frontendAbiDir, "Forwarder.json"))
     fs.copyFileSync(oracleArtifact, path.join(frontendAbiDir, "MRVOracle.json"))
+    fs.copyFileSync(oracleArtifact, path.join(frontendAbiDir, "MRVOracle.json"))
     fs.copyFileSync(submissionArtifact, path.join(frontendAbiDir, "EmissionSubmission.json"))
+
+    const registryArtifact = path.join(__dirname, "..", "artifacts", "contracts", "GreenProjectRegistry.sol", "GreenProjectRegistry.json")
+    fs.copyFileSync(registryArtifact, path.join(frontendAbiDir, "GreenProjectRegistry.json"))
 
     fs.writeFileSync(path.join(frontendAbiDir, "addresses.local.json"), JSON.stringify(deployments, null, 2))
     console.log("Copied ABIs (including EmissionSubmission) and addresses.local.json into frontend/abi")

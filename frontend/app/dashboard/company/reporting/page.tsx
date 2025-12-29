@@ -136,15 +136,7 @@ export default function ReportingPage() {
                 </p>
             </div>
 
-            {/* Info Card */}
-            <Card className="bg-blue-50 border-blue-200">
-                <CardContent className="py-4">
-                    <p className="text-sm text-blue-800">
-                        <strong>Alur:</strong> Upload dokumen emisi → File tersimpan di IPFS (lokal) →
-                        Hash dicatat on-chain → Oracle verify → Tagihan otomatis di-set
-                    </p>
-                </CardContent>
-            </Card>
+
 
             {/* Upload Form */}
             <Card>

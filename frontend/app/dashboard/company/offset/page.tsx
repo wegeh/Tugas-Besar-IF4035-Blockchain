@@ -81,7 +81,7 @@ export default function OffsetPage() {
                             <Label>Amount to Retire</Label>
                             <Input
                                 type="number"
-                                holder="Amount"
+                                placeholder="Amount"
                                 value={retireAmount}
                                 onChange={e => setRetireAmount(e.target.value)}
                             />

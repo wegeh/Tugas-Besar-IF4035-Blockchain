@@ -4,9 +4,11 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
+import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import "./interfaces/IMRVOracle.sol";
+import "./SPEGRKToken.sol";
 
-contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context {
+contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Holder {
     bytes32 public constant REGULATOR_ROLE = keccak256("REGULATOR_ROLE");
     
     enum PeriodStatus { ACTIVE, AUDIT, ENDED }
@@ -14,6 +16,7 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context {
     
     uint32 public immutable period;
     IMRVOracle public immutable oracle;
+    SPEGRKToken public immutable speToken;
     PeriodStatus public status = PeriodStatus.ACTIVE;
 
     mapping(address => uint256) public surrendered;
@@ -30,13 +33,15 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context {
         address regulator, 
         uint32 _period, 
         address trustedForwarder,
-        address _oracle
+        address _oracle,
+        address _speToken
     )
         ERC20("PTBAE-PU Allowance", "PTBAE")
         ERC2771Context(trustedForwarder)
     {
         period = _period;
         oracle = IMRVOracle(_oracle);
+        speToken = SPEGRKToken(_speToken);
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGULATOR_ROLE, regulator);
     }
@@ -64,34 +69,78 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context {
     }
 
     /**
-     * @notice Surrender PTBAE tokens untuk memenuhi kewajiban emisi
-     * @dev Otomatis bayar SELURUH tagihan dari Oracle. Tidak ada parameter.
-     *      Company hanya perlu klik satu tombol untuk bayar tagihan.
+     * @notice Surrender normal (hanya bayar pakai PTBAE balance sendiri)
      */
     function surrender() external {
+        _performSurrender(_msgSender(), 0);
+    }
+
+    /**
+     * @notice Surrender dengan kombinasi SPE-GRK (Offset Carbon Credit)
+     * @dev User harus approve PTBAE contract di SPE contract dulu.
+     */
+    function surrenderWithOffset(uint256[] calldata speIds, uint256[] calldata speAmounts) external {
+        uint256 totalOffset = 0;
+
+        require(speIds.length == speAmounts.length, "length mismatch");
+        require(status == PeriodStatus.AUDIT, "surrender only allowed in audit phase");
+
+        // Process each SPE token
+        for (uint256 i = 0; i < speIds.length; i++) {
+            uint256 id = speIds[i];
+            uint256 amt = speAmounts[i];
+
+            if (amt > 0) {
+                // 1. Validate Vintage Year <= Compliance Period
+                (SPEGRKToken.UnitMeta memory meta, , , , , ) = speToken.getUnit(id);
+                require(meta.vintageYear <= period, "token vintage too new");
+
+                // 2. Transfer SPE from User to Contract
+                speToken.safeTransferFrom(_msgSender(), address(this), id, amt, "");
+
+                // 3. Retire/Burn SPE (since contract is now owner)
+                speToken.retireSPE(id, amt);
+
+                totalOffset += amt;
+            }
+        }
+
+        // Perform rest of surrender logic
+        _performSurrender(_msgSender(), totalOffset);
+    }
+
+    function _performSurrender(address user, uint256 offsetAmount) internal {
         // 1. Check phase
         require(status == PeriodStatus.AUDIT, "surrender only allowed in audit phase");
         
         // 2. Get verified emission (tagihan) from Oracle
-        uint256 tagihan = oracle.getVerifiedEmission(period, _msgSender());
+        uint256 tagihan = oracle.getVerifiedEmission(period, user);
         require(tagihan > 0, "no verified emission data");
         
         // 3. Check if already paid
-        require(!hasSurrendered[_msgSender()], "already surrendered");
+        require(!hasSurrendered[user], "already surrendered");
         
-        // 4. Check balance
-        require(balanceOf(_msgSender()) >= tagihan, "insufficient balance");
+        // 4. Calculate remaining to pay with PTBAE
+        uint256 remainingToPay = 0;
+        if (tagihan > offsetAmount) {
+            remainingToPay = tagihan - offsetAmount;
+        }
+
+        // 5. Check PTBAE balance if needed
+        if (remainingToPay > 0) {
+            require(balanceOf(user) >= remainingToPay, "insufficient PTBAE balance");
+            _burn(user, remainingToPay);
+        }
         
-        // 5. Execute surrender - burn full tagihan amount
-        _burn(_msgSender(), tagihan);
-        surrendered[_msgSender()] = tagihan;
-        hasSurrendered[_msgSender()] = true;
+        // 6. Record & Update
+        surrendered[user] = tagihan; // Marked as full obligation met
+        hasSurrendered[user] = true;
         
-        // 6. Update compliance status
-        complianceStatus[_msgSender()] = ComplianceStatus.COMPLIANT;
-        emit ComplianceUpdated(_msgSender(), ComplianceStatus.COMPLIANT);
+        // 7. Update compliance status
+        complianceStatus[user] = ComplianceStatus.COMPLIANT;
+        emit ComplianceUpdated(user, ComplianceStatus.COMPLIANT);
         
-        emit Surrendered(_msgSender(), tagihan, 0);
+        emit Surrendered(user, tagihan, 0);
     }
 
     /**
@@ -150,7 +199,7 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context {
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(AccessControl)
+        override(AccessControl, ERC1155Holder)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);

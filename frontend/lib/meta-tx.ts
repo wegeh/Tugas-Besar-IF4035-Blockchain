@@ -49,7 +49,7 @@ async function buildRequest(forwarder: any, input: any) {
         from: input.from,
         to: input.to,
         value: 0,
-        gas: 5000000, // Increased limit for factory deployment
+        gas: 2000000, // Reduced from 10M to ensure gasleft() > req.gas
         nonce: nonce,
         deadline: Math.floor(Date.now() / 1000) + 3600, // 1 hour validity
         data: input.data,

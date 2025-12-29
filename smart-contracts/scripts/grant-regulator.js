@@ -41,6 +41,20 @@ async function main() {
     } else {
         console.log("No token found for initial period.")
     }
+
+    // 3. Grant Role on SPEGRKToken (to allow issueSPE)
+    const speAddress = deployments.SPEGRKToken?.address
+    if (speAddress) {
+        const SPEGRKToken = await hre.ethers.getContractFactory("SPEGRKToken")
+        const speToken = SPEGRKToken.attach(speAddress)
+
+        const speRegulatorRole = await speToken.REGULATOR_ROLE()
+        tx = await speToken.grantRole(speRegulatorRole, USER_ADDRESS)
+        await tx.wait()
+        console.log(`Granted REGULATOR_ROLE on SPEGRKToken to ${USER_ADDRESS}`)
+    } else {
+        console.log("SPEGRKToken address not found in deployments.")
+    }
 }
 
 main().catch((error) => {

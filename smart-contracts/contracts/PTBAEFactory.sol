@@ -10,6 +10,7 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
 
     uint32 public currentPeriod;
     address public immutable oracle;
+    address public immutable speTokenAddress;
     mapping(uint32 => address) public tokenByPeriod;
 
     event PeriodOpened(uint32 indexed period, address token);
@@ -19,12 +20,15 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
         address regulator, 
         uint32 initialPeriod, 
         address _forwarder,
-        address _oracle
+        address _oracle,
+        address _speToken
     )
         ERC2771Context(_forwarder)
     {
         require(_oracle != address(0), "oracle=0");
+        require(_speToken != address(0), "spe=0");
         oracle = _oracle;
+        speTokenAddress = _speToken;
         
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGULATOR_ROLE, regulator);
@@ -44,7 +48,8 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
             regulator, // Regulator of the token
             p,
             trustedForwarder(),
-            oracle      // MRV Oracle address
+            oracle,     // MRV Oracle address
+            speTokenAddress // SPE Token address
         );
         tokenByPeriod[p] = address(token);
         emit PeriodOpened(p, address(token));

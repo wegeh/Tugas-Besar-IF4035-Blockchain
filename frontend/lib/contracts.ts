@@ -4,6 +4,7 @@ import speAbi from "@/abi/SPEGRKToken.json"
 import ptbaeAbi from "@/abi/PTBAEAllowanceToken.json"
 import oracleAbi from "@/abi/MRVOracle.json"
 import submissionAbi from "@/abi/EmissionSubmission.json"
+import registryAbi from "@/abi/GreenProjectRegistry.json"
 import addresses from "@/abi/addresses.local.json"
 
 const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || (addresses as any).rpc || "http://127.0.0.1:8545"
@@ -15,6 +16,7 @@ const defaultPtbaeAddress = (addresses as any).PTBAEAllowanceToken?.address || p
 export const forwarderAddress = (addresses as any).Forwarder?.address || ""
 export const oracleAddress = (addresses as any).MRVOracle?.address || ""
 export const submissionAddress = (addresses as any).EmissionSubmission?.address || ""
+export const registryAddress = (addresses as any).GreenProjectRegistry?.address || ""
 export const DEBUG_FACTORY_ADDRESS = factoryAddress
 
 // Local PoA network configuration
@@ -108,6 +110,11 @@ export function getSubmissionContract(providerOrSigner: Provider | Signer): Cont
   return new Contract(submissionAddress, submissionAbi.abi, providerOrSigner)
 }
 
+export function getRegistryContract(providerOrSigner: Provider | Signer): Contract {
+  if (!registryAddress) throw new Error("GreenProjectRegistry contract address not set")
+  return new Contract(registryAddress, registryAbi.abi, providerOrSigner)
+}
+
 export function getOracleContract(providerOrSigner: Provider | Signer): Contract {
   if (!oracleAddress) throw new Error("MRVOracle contract address not set")
   return new Contract(oracleAddress, oracleAbi.abi, providerOrSigner)
@@ -124,6 +131,19 @@ export async function getSPEBalance(address: string, tokenId: number = 1): Promi
   } catch (error) {
     console.error("Error fetching SPE balance:", error)
     return "0"
+  }
+}
+
+export async function getSPEBalanceBatch(address: string, tokenIds: number[]): Promise<string[]> {
+  const provider = getReadOnlyProvider()
+  const contract = getSpeContract(provider)
+  try {
+    const accounts = Array(tokenIds.length).fill(address)
+    const balances = await contract.balanceOfBatch(accounts, tokenIds)
+    return balances.map((b: bigint) => b.toString())
+  } catch (error) {
+    console.error("Error fetching SPE batch balance:", error)
+    return tokenIds.map(() => "0")
   }
 }
 
@@ -299,6 +319,71 @@ export interface SubmissionData {
   verifiedEmission: string
 }
 
+export interface UnitMeta {
+  projectId: string
+  vintageYear: number
+  methodology: string
+  registryRef: string
+}
+
+export interface AttestationData {
+  docHash: string
+  metaHash: string
+  valid: boolean
+  attestedAt: number
+}
+
+// --- SPE-GRK & Oracle Helpers ---
+
+/**
+ * Issue SPE-GRK Token (called by Regulator)
+ */
+export async function issueSPE(
+  signer: Signer,
+  tokenId: number,
+  to: string,
+  amount: bigint,
+  meta: UnitMeta,
+  attestationId: string
+) {
+  const contract = getSpeContract(signer)
+  return contract.issueSPE(tokenId, to, amount, meta, attestationId)
+}
+
+/**
+ * Create MRV Attestation (called by Oracle/Verifier).
+ * Note: Regulator typically has ORACLE_ROLE for simulation/manual verification.
+ */
+export async function attestMRV(
+  signer: Signer,
+  attestationId: string,
+  mrvDocHash: string,
+  metaHash: string
+) {
+  const contract = getOracleContract(signer)
+  return contract.attestMRV(attestationId, mrvDocHash, metaHash)
+}
+
+/**
+ * Get Attestation details from Oracle
+ */
+export async function getAttestation(attestationId: string): Promise<AttestationData | null> {
+  const provider = getReadOnlyProvider()
+  const contract = getOracleContract(provider)
+  try {
+    const [docHash, metaHash, valid, attestedAt] = await contract.getAttestation(attestationId)
+    return {
+      docHash,
+      metaHash,
+      valid,
+      attestedAt: Number(attestedAt)
+    }
+  } catch (error) {
+    console.error("Error fetching attestation:", error)
+    return null
+  }
+}
+
 /**
  * Get all submissions for a user across multiple periods.
  * Data source: Smart Contract (EmissionSubmission.getSubmission)
@@ -328,4 +413,124 @@ export async function getUserSubmissions(userAddress: string, periods: number[])
   }
 
   return submissions.sort((a, b) => b.period - a.period) // Sort by period descending
+}
+
+/**
+ * Get all submissions for a specific period (Regulator view).
+ */
+export async function getAllPeriodSubmissions(period: number): Promise<{ user: string, data: SubmissionData }[]> {
+  const provider = getReadOnlyProvider()
+  const contract = getSubmissionContract(provider)
+  const allSubmissions: { user: string, data: SubmissionData }[] = []
+
+  try {
+    // 1. Get all submitters for the period
+    const submitters: string[] = await contract.getSubmitters(period)
+
+    // 2. Fetch submission data for each submitter
+    for (const user of submitters) {
+      const [ipfsHash, submittedAt, status, verifiedEmission] = await contract.getSubmission(period, user)
+      allSubmissions.push({
+        user,
+        data: {
+          period,
+          ipfsHash,
+          submittedAt: Number(submittedAt),
+          status: Number(status),
+          verifiedEmission: verifiedEmission.toString()
+        }
+      })
+    }
+  } catch (error) {
+    console.error(`Error fetching all submissions for period ${period}:`, error)
+  }
+
+  return allSubmissions.sort((a, b) => b.data.submittedAt - a.data.submittedAt)
+}
+
+/**
+ * Surrender with Offset (PTBAE + SPE-GRK)
+ */
+export async function surrenderWithOffset(
+  signer: Signer,
+  periodYear: number,
+  speIds: number[],
+  speAmounts: bigint[]
+) {
+  const tokenAddress = await getTokenAddressForPeriod(periodYear)
+  if (!tokenAddress) throw new Error("Period token not found")
+
+  const contract = getPtbaeContract(signer, tokenAddress)
+  return contract.surrenderWithOffset(speIds, speAmounts)
+}
+
+/**
+ * Submit Green Project (Phase Independent)
+ */
+export async function submitProject(signer: Signer, ipfsHash: string) {
+  const contract = getRegistryContract(signer)
+  return contract.submitProject(ipfsHash)
+}
+
+export interface ProjectData {
+  ipfsHash: string
+  submittedAt: number
+  status: number
+  verifiedAmount: string
+}
+
+/**
+ * Get User Projects
+ */
+export async function getUserProjects(user: string): Promise<ProjectData[]> {
+  const provider = getReadOnlyProvider()
+  const contract = getRegistryContract(provider)
+  try {
+    const submissions = await contract.getUserSubmissions(user)
+    return submissions.map((s: any) => ({
+      ipfsHash: s.ipfsHash,
+      submittedAt: Number(s.submittedAt),
+      status: Number(s.status),
+      verifiedAmount: s.verifiedAmount.toString()
+    }))
+  } catch (error) {
+    console.error("Error fetching user projects:", error)
+    return []
+  }
+}
+
+/**
+ * Get All Pending Projects (Regulator View)
+ */
+export async function getAllGreenProjects(): Promise<{ user: string, data: ProjectData }[]> {
+  const provider = getReadOnlyProvider()
+  const contract = getRegistryContract(provider)
+  const allProjects: { user: string, data: ProjectData }[] = []
+
+  try {
+    let index = 0
+    while (true) {
+      try {
+        const user = await contract.projectSubmitters(index)
+        const submissions = await contract.getUserSubmissions(user)
+        submissions.forEach((s: any) => {
+          allProjects.push({
+            user,
+            data: {
+              ipfsHash: s.ipfsHash,
+              submittedAt: Number(s.submittedAt),
+              status: Number(s.status),
+              verifiedAmount: s.verifiedAmount.toString()
+            }
+          })
+        })
+        index++
+      } catch {
+        break // End of list
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching all projects", error)
+  }
+  return allProjects.sort((a, b) => b.data.submittedAt - a.data.submittedAt)
 }
