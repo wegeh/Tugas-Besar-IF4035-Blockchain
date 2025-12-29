@@ -110,7 +110,7 @@ async function main() {
             const REGULATOR_ROLE = ethers.id("REGULATOR_ROLE")
 
             // Instantiate Contracts
-            let factory, token;
+            let factory, token, speToken;
 
             if (addresses.PTBAEFactory?.address) {
                 factory = new ethers.Contract(
@@ -123,6 +123,14 @@ async function main() {
             if (addresses.PTBAEAllowanceToken?.address) {
                 token = new ethers.Contract(
                     addresses.PTBAEAllowanceToken.address,
+                    ["function grantRole(bytes32 role, address account) public", "function hasRole(bytes32 role, address account) public view returns (bool)"],
+                    deployer
+                )
+            }
+
+            if (addresses.SPEGRKToken?.address) {
+                speToken = new ethers.Contract(
+                    addresses.SPEGRKToken.address,
                     ["function grantRole(bytes32 role, address account) public", "function hasRole(bytes32 role, address account) public view returns (bool)"],
                     deployer
                 )
@@ -155,6 +163,19 @@ async function main() {
                         console.log('Granted!')
                     } else {
                         console.log(`[Token] ${regulatorAddr} already has REGULATOR_ROLE.`)
+                    }
+                }
+
+                // Grant on SPEGRKToken
+                if (speToken) {
+                    const hasRole = await speToken.hasRole(REGULATOR_ROLE, regulatorAddr)
+                    if (!hasRole) {
+                        console.log(`[SPEGRKToken] Granting REGULATOR_ROLE to ${regulatorAddr}...`)
+                        const tx = await speToken.grantRole(REGULATOR_ROLE, regulatorAddr)
+                        await tx.wait()
+                        console.log('Granted!')
+                    } else {
+                        console.log(`[SPEGRKToken] ${regulatorAddr} already has REGULATOR_ROLE.`)
                     }
                 }
             }
