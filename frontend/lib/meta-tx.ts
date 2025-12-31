@@ -18,6 +18,10 @@ export const ForwardRequest = [
     { name: "data", type: "bytes" },
 ]
 
+// Local nonce cache to prevent mismatch on consecutive transactions
+const nonceCache: Map<string, { nonce: bigint; timestamp: number }> = new Map()
+const NONCE_CACHE_TTL = 30000 // 30 seconds - invalidate cache after this
+
 function getMetaTxTypeData(chainId: number, verifyingContract: string) {
     return {
         types: {
@@ -44,7 +48,26 @@ async function signMetaTxRequest(signer: ethers.Signer, forwarder: any, input: a
 }
 
 async function buildRequest(forwarder: any, input: any, gasLimit: number = 3000000) {
-    const nonce = await forwarder.nonces(input.from)
+    const forwarderAddr = await forwarder.getAddress()
+    const cacheKey = `${input.from}-${forwarderAddr}`
+
+    let nonce: bigint
+    const cached = nonceCache.get(cacheKey)
+    const now = Date.now()
+
+    if (cached && (now - cached.timestamp) < NONCE_CACHE_TTL) {
+        // Use cached nonce + 1
+        nonce = cached.nonce + BigInt(1)
+        console.log(`[MetaTx] Using cached nonce + 1: ${nonce}`)
+    } else {
+        // Fetch from chain
+        nonce = await forwarder.nonces(input.from)
+        console.log(`[MetaTx] Fetched on-chain nonce: ${nonce}`)
+    }
+
+    // Update cache
+    nonceCache.set(cacheKey, { nonce, timestamp: now })
+
     return {
         from: input.from,
         to: input.to,

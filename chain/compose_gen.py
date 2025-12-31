@@ -68,6 +68,7 @@ config = f"""services:
       - ./ipfs_data:/data/ipfs
     environment:
       - IPFS_PROFILE=server
+    command: ["daemon", "--offline"]
     restart: unless-stopped
 """
 

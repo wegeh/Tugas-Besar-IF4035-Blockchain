@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/table"
 import { solidityPackedKeccak256, getAddress } from "ethers"
 import { decodeContractError, getErrorDetails } from "@/lib/error-decoder"
+import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
+import { forwarderAddress } from "@/lib/contracts"
 
 export default function IssuancePage() {
     const { address } = useAccount()
@@ -153,17 +155,41 @@ export default function IssuancePage() {
                 throw new Error(`staticCall failed: ${staticError.shortMessage || staticError.message}`)
             }
 
-            // Step 4: Send actual transaction
-            console.log("--- Sending Transaction ---")
+            // Step 4: Send transaction via MetaTx
+            console.log("--- Sending Transaction via MetaTx ---")
+            toast.info("Signing transaction...")
+
+            const speAddress = await contract.getAddress()
+            const txData = contract.interface.encodeFunctionData("issueSPE", [
+                tokenId, user, amount, meta, attestationId
+            ])
+
+            const { request, signature } = await createMetaTx(signer, forwarderAddress, speAddress, txData)
+
             toast.info("Sending transaction...")
-            const tx = await contract.issueSPE(tokenId, user, amount, meta, attestationId);
-            console.log("TX Hash:", tx.hash)
+            const result = await sendMetaTx(request, signature)
+            console.log("TX Hash:", result.txHash)
 
-            toast.info("Waiting for confirmation...")
-            const receipt = await tx.wait();
-            console.log("TX Confirmed in Block:", receipt.blockNumber)
+            toast.success("Tokens Issued!", { description: `Hash: ${result.txHash.slice(0, 10)}...` });
 
-            toast.success("Tokens Issued!", { description: `Block: ${receipt.blockNumber}` });
+            // AUTOMATICALLY OPEN MARKET
+            console.log("[Issuance] Opening Trading Market for SPE...")
+            try {
+                await fetch("/api/markets", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        marketType: "SPE",
+                        tokenId: tokenId.toString(),
+                        basePrice: "15000000000000000000000" // 15,000 IDRC Base Price
+                    })
+                })
+                toast.success("Market Opened for Trading!")
+            } catch (err) {
+                console.error("Failed to open market:", err)
+                toast.warning("Token issued, but failed to open market automatically.")
+            }
+
             loadSubmissions();
 
         } catch (error: any) {

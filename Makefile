@@ -24,14 +24,16 @@ bootstrap: chain-up sc-deploy fe-db-up fe-migrate fe-seed
 	@echo "Relayer   : $$(cat $(RELAYER_FILE) 2>/dev/null || echo 'N/A')"
 
 .PHONY: reset
-reset: chain-reset fe-db-down
-	@echo "✅ Reset done."
+reset: chain-reset
+	@echo ">> [root] Stopping and removing volumes (Frontend/Oracle/Postgres)..."
+	@docker compose down -v
+	@echo "✅ Reset done (All data wiped)."
 
 .PHONY: stop
 stop:
-	@echo ">> Stopping Geth and Postgres (keeping data)..."
+	@echo ">> Stopping Services..."
 	@$(MAKE) -C $(CHAIN_DIR) down
-	@cd $(FE_DIR) && docker compose down
+	@docker compose down
 	@echo "✅ Stopped."
 
 # -----------------------
@@ -47,10 +49,8 @@ chain-up:
 	@echo ">> [chain] all (reset+init+up)"
 	@$(MAKE) -C $(CHAIN_DIR) all
 	@echo ">> [chain] wait RPC"
-	@echo ">> [chain] wait RPC"
 	@python chain/wait_for_rpc.py $(RPC_URL)
 	@cd $(CHAIN_DIR) && python init_chain.py show-info
-
 # -----------------------
 # Smart contracts (Hardhat)
 # -----------------------
@@ -74,13 +74,13 @@ sc-fund-users:
 # -----------------------
 .PHONY: fe-db-up
 fe-db-up:
-	@echo ">> [frontend] start postgres"
-	@cd $(FE_DIR) && docker compose up -d
+	@echo ">> [frontend] start postgres (root compose)"
+	@docker compose up -d postgres
 
 .PHONY: fe-db-down
 fe-db-down:
 	@echo ">> [frontend] stop postgres"
-	@cd $(FE_DIR) && (docker compose down -v || true)
+	@docker compose down
 
 .PHONY: fe-install
 fe-install:
@@ -95,4 +95,15 @@ fe-migrate: fe-install
 .PHONY: fe-seed
 fe-seed: fe-install
 	@echo ">> [frontend] prisma seed (also grants SC roles)"
-	@python scripts/run_seed.py
+	@python chain/run_seed.py
+
+# -----------------------
+# Full Stack Run
+# -----------------------
+.PHONY: run
+run: bootstrap
+	@echo ">> Starting Services (Postgres & Chain running in Docker)..."
+	@echo ">> Launching Frontend and Oracle locally..."
+	@npx concurrently -k \
+		"cd oracle-service && pnpm run start" \
+		"cd frontend && pnpm run dev"

@@ -11,4 +11,8 @@
 export type * from './models/User'
 export type * from './models/CompliancePeriod'
 export type * from './models/Allocation'
+export type * from './models/Market'
+export type * from './models/AuctionWindow'
+export type * from './models/Order'
+export type * from './models/Trade'
 export type * from './commonInputTypes'

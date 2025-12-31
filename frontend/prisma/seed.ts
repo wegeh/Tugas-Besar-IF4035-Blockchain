@@ -25,28 +25,10 @@ async function main() {
     const VALIDATOR = process.env.VALIDATOR
     const RELAYER = process.env.RELAYER
 
-    // Configuration Arrays
-    // Only personal wallet is registered as a user for login
-    const REGULATORS = [
-        {
-            walletAddress: '0x2B75471E69E1A38a7bD89800400E8a6A05e4C8Cf',
-            companyName: 'Kementerian Lingkungan Hidup',
-            email: 'admin@klhk.go.id'
-        }
-    ]
-
-    const COMPANIES = [
-        {
-            walletAddress: '0x7CfA165E0f8CBC1d624Ec746117FcC2cDeA9Fc8a',
-            companyName: 'PT. Pembangkit Jawa Bali',
-            email: 'admin@pjb.com'
-        },
-        {
-            walletAddress: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc', // Hardhat Account #2
-            companyName: 'PT. Semen Indonesia',
-            email: 'admin@semenindonesia.com'
-        }
-    ]
+    // Load user configuration from centralized config file
+    const usersConfig = await import('../../config/users.json')
+    const REGULATORS = usersConfig.regulators
+    const COMPANIES = usersConfig.companies
 
     // 1. Seed Regulators
     console.log('Seeding Regulators...')

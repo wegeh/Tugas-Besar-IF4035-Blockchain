@@ -53,7 +53,11 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   User: 'User',
   CompliancePeriod: 'CompliancePeriod',
-  Allocation: 'Allocation'
+  Allocation: 'Allocation',
+  Market: 'Market',
+  AuctionWindow: 'AuctionWindow',
+  Order: 'Order',
+  Trade: 'Trade'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -105,6 +109,77 @@ export const AllocationScalarFieldEnum = {
 } as const
 
 export type AllocationScalarFieldEnum = (typeof AllocationScalarFieldEnum)[keyof typeof AllocationScalarFieldEnum]
+
+
+export const MarketScalarFieldEnum = {
+  id: 'id',
+  marketKey: 'marketKey',
+  marketType: 'marketType',
+  tokenId: 'tokenId',
+  periodYear: 'periodYear',
+  basePrice: 'basePrice',
+  lastClearingPrice: 'lastClearingPrice',
+  isOpen: 'isOpen',
+  expiresAt: 'expiresAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type MarketScalarFieldEnum = (typeof MarketScalarFieldEnum)[keyof typeof MarketScalarFieldEnum]
+
+
+export const AuctionWindowScalarFieldEnum = {
+  id: 'id',
+  marketKey: 'marketKey',
+  windowNumber: 'windowNumber',
+  startTime: 'startTime',
+  endTime: 'endTime',
+  clearingPrice: 'clearingPrice',
+  totalVolume: 'totalVolume',
+  status: 'status',
+  settlementTxHash: 'settlementTxHash',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type AuctionWindowScalarFieldEnum = (typeof AuctionWindowScalarFieldEnum)[keyof typeof AuctionWindowScalarFieldEnum]
+
+
+export const OrderScalarFieldEnum = {
+  id: 'id',
+  onChainId: 'onChainId',
+  marketType: 'marketType',
+  marketKey: 'marketKey',
+  tokenId: 'tokenId',
+  periodYear: 'periodYear',
+  ptbaeAddress: 'ptbaeAddress',
+  side: 'side',
+  price: 'price',
+  amount: 'amount',
+  filledAmount: 'filledAmount',
+  status: 'status',
+  traderId: 'traderId',
+  txHash: 'txHash',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  auctionWindowId: 'auctionWindowId'
+} as const
+
+export type OrderScalarFieldEnum = (typeof OrderScalarFieldEnum)[keyof typeof OrderScalarFieldEnum]
+
+
+export const TradeScalarFieldEnum = {
+  id: 'id',
+  marketKey: 'marketKey',
+  buyOrderId: 'buyOrderId',
+  sellOrderId: 'sellOrderId',
+  price: 'price',
+  amount: 'amount',
+  txHash: 'txHash',
+  executedAt: 'executedAt'
+} as const
+
+export type TradeScalarFieldEnum = (typeof TradeScalarFieldEnum)[keyof typeof TradeScalarFieldEnum]
 
 
 export const SortOrder = {

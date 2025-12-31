@@ -4,6 +4,8 @@
  * Listens to EmissionSubmitted events from blockchain,
  * fetches documents from local IPFS, verifies (simplified),
  * and pushes verified emission to MRVOracle contract.
+ * 
+ * Also handles initial base price setting for markets (dummy oracle).
  */
 
 const { ethers } = require("ethers");
@@ -16,12 +18,14 @@ const submissionAbiPath = path.join(__dirname, "..", "frontend", "abi", "Emissio
 const registryAbiPath = path.join(__dirname, "..", "frontend", "abi", "GreenProjectRegistry.json");
 const oracleAbiPath = path.join(__dirname, "..", "frontend", "abi", "MRVOracle.json");
 
+
 // Configuration
 const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
-const IPFS_GATEWAY = process.env.IPFS_GATEWAY || "http://127.0.0.1:8080/ipfs";
 
 const ORACLE_PRIVATE_KEY = process.env.ORACLE_PRIVATE_KEY ||
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+// (Dummy price constants and market creation function removed per refinement)
 
 async function main() {
     console.log("[Oracle] Starting Oracle Service...");
@@ -38,6 +42,7 @@ async function main() {
 
     console.log(`EmissionSubmission: ${addresses.EmissionSubmission?.address}`);
     console.log(`GreenProjectRegistry: ${addresses.GreenProjectRegistry?.address}`);
+    console.log(`MRVOracle: ${addresses.MRVOracle?.address}`);
 
     const provider = new ethers.JsonRpcProvider(RPC_URL);
     let signer;
@@ -58,7 +63,7 @@ async function main() {
         console.log(`[PTBAE] New Submission: ${user} (Period ${period})`);
         try {
             // Mock verification for PTBAE
-            const verifiedEmission = ethers.parseUnits("1000", 18);
+            const verifiedEmission = ethers.parseUnits("300", 18);
 
             // Attest & Set Emission
             const attestionId = ethers.keccak256(ethers.toUtf8Bytes(`ptbae-${period}-${user}`));
@@ -145,9 +150,12 @@ async function main() {
             }
         }
     });
+
+    console.log("[Oracle] Ready and listening for events...");
 }
 
 main().catch((error) => {
     console.error("Fatal error:", error);
     process.exit(1);
 });
+

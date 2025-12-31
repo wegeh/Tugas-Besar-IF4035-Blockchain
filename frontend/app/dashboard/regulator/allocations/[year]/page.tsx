@@ -152,7 +152,28 @@ export default function AllocationManagementPage() {
             await updatePeriodStatus(year, "ENDED")
             console.log("[Finalize] Database updated successfully")
 
-            toast.success("Period Finalized!")
+            // AUTOMATICALLY CREATE MARKET
+            console.log("[Finalize] Opening Trading Market...")
+            const marketRes = await fetch("/api/markets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    marketType: "PTBAE",
+                    periodYear: year,
+                    tokenId: tokenAddress, // Using tokenAddress as tokenId
+                    // Set default to 10,000 IDRC (10,000 * 10^18)
+                    basePrice: "10000000000000000000000"
+                })
+            })
+
+            if (!marketRes.ok) {
+                const err = await marketRes.json()
+                console.error("Failed to create market:", err)
+                toast.warning("Period Finalized, but failed to auto-open Market: " + err.error)
+            } else {
+                toast.success("Period Finalized & Market Opened!")
+            }
+
             setStatus(PeriodStatus.ENDED)
         } catch (error: any) {
             console.error("Finalize Error:", error)

@@ -15,3 +15,38 @@ export const Role = {
 } as const
 
 export type Role = (typeof Role)[keyof typeof Role]
+
+
+export const OrderSide = {
+  BID: 'BID',
+  ASK: 'ASK'
+} as const
+
+export type OrderSide = (typeof OrderSide)[keyof typeof OrderSide]
+
+
+export const OrderStatus = {
+  OPEN: 'OPEN',
+  FILLED: 'FILLED',
+  PARTIALLY_FILLED: 'PARTIALLY_FILLED',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus]
+
+
+export const MarketType = {
+  SPE: 'SPE',
+  PTBAE: 'PTBAE'
+} as const
+
+export type MarketType = (typeof MarketType)[keyof typeof MarketType]
+
+
+export const AuctionStatus = {
+  OPEN: 'OPEN',
+  CLOSED: 'CLOSED',
+  SETTLED: 'SETTLED'
+} as const
+
+export type AuctionStatus = (typeof AuctionStatus)[keyof typeof AuctionStatus]

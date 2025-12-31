@@ -113,6 +113,68 @@ async function main() {
   const registryAddr = await registry.getAddress()
   console.log("GreenProjectRegistry deployed:", registryAddr)
 
+  // ===== Deploy IDRStable (Dummy IDRC Token) =====
+  const IDRStable = await hre.ethers.getContractFactory("IDRStable")
+  const idrc = await IDRStable.deploy(
+    deployer.address,   // admin
+    forwarderAddr       // trusted forwarder
+  )
+  await idrc.waitForDeployment()
+  const idrcAddr = await idrc.getAddress()
+  console.log("IDRStable (IDRC) deployed:", idrcAddr)
+
+  // ===== Deploy CarbonExchange =====
+  const CarbonExchange = await hre.ethers.getContractFactory("CarbonExchange")
+  const exchange = await CarbonExchange.deploy(
+    deployer.address,   // admin
+    forwarderAddr,      // trusted forwarder
+    idrcAddr,           // IDRC token
+    speAddr             // SPE token
+  )
+  await exchange.waitForDeployment()
+  const exchangeAddr = await exchange.getAddress()
+  console.log("CarbonExchange deployed:", exchangeAddr)
+
+  // Grant MATCHER_ROLE to deployer (for matching engine)
+  const MATCHER_ROLE = await exchange.MATCHER_ROLE()
+  await (await exchange.grantRole(MATCHER_ROLE, deployer.address)).wait()
+  console.log("Granted MATCHER_ROLE to deployer")
+
+  // Also grant MATCHER_ROLE to Hardhat Account #0 (used by default scheduler)
+  const HARDHAT_ACCOUNT_0 = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+  if (deployer.address.toLowerCase() !== HARDHAT_ACCOUNT_0.toLowerCase()) {
+    await (await exchange.grantRole(MATCHER_ROLE, HARDHAT_ACCOUNT_0)).wait()
+    console.log("Granted MATCHER_ROLE to Hardhat Account #0 (scheduler)")
+
+    // Fund Hardhat Account #0 with ETH for gas (scheduler needs gas to call settleBatch)
+    const gasAmount = hre.ethers.parseEther("10") // 10 ETH for gas
+    await (await deployer.sendTransaction({ to: HARDHAT_ACCOUNT_0, value: gasAmount })).wait()
+    console.log("Funded Hardhat Account #0 with 10 ETH for gas")
+  }
+
+  // ===== Seed IDRC for demo accounts =====
+  // Load company addresses from centralized config
+  const usersConfigPath = path.join(__dirname, "..", "..", "config", "users.json")
+  const usersConfig = JSON.parse(fs.readFileSync(usersConfigPath, "utf8"))
+  const companyAddresses = usersConfig.companies.map(c => c.walletAddress)
+
+  const seedAmount = hre.ethers.parseUnits("10000000", 18) // 10M IDRC
+  const maxApproval = hre.ethers.MaxUint256
+
+  for (const addr of companyAddresses) {
+    try {
+      // Mint IDRC to demo account
+      await (await idrc.mint(addr, seedAmount)).wait()
+      console.log(`Minted 1M IDRC to ${addr.slice(0, 10)}...`)
+    } catch (e) {
+      console.log(`Skipping seed for ${addr.slice(0, 10)}... (may not exist)`)
+    }
+  }
+
+  // Also mint to deployer for testing
+  await (await idrc.mint(deployer.address, seedAmount)).wait()
+  console.log(`Minted 1M IDRC to deployer ${deployer.address.slice(0, 10)}...`)
+
   // ===== Save deployments =====
   const deployments = {
     network: hre.network.name,
@@ -124,6 +186,8 @@ async function main() {
     PTBAEAllowanceToken: { address: ptbaeAddr, period: INITIAL_PERIOD, initialHolder: deployer.address },
     EmissionSubmission: { address: submissionAddr },
     GreenProjectRegistry: { address: registryAddr },
+    IDRStable: { address: idrcAddr },
+    CarbonExchange: { address: exchangeAddr },
   }
 
   const outDir = path.join(__dirname, "..", "deployments")
@@ -153,8 +217,14 @@ async function main() {
     const registryArtifact = path.join(__dirname, "..", "artifacts", "contracts", "GreenProjectRegistry.sol", "GreenProjectRegistry.json")
     fs.copyFileSync(registryArtifact, path.join(frontendAbiDir, "GreenProjectRegistry.json"))
 
+    const idrcArtifact = path.join(__dirname, "..", "artifacts", "contracts", "IDRStable.sol", "IDRStable.json")
+    fs.copyFileSync(idrcArtifact, path.join(frontendAbiDir, "IDRStable.json"))
+
+    const exchangeArtifact = path.join(__dirname, "..", "artifacts", "contracts", "CarbonExchange.sol", "CarbonExchange.json")
+    fs.copyFileSync(exchangeArtifact, path.join(frontendAbiDir, "CarbonExchange.json"))
+
     fs.writeFileSync(path.join(frontendAbiDir, "addresses.local.json"), JSON.stringify(deployments, null, 2))
-    console.log("Copied ABIs (including EmissionSubmission) and addresses.local.json into frontend/abi")
+    console.log("Copied ABIs (including IDRStable, CarbonExchange) and addresses.local.json into frontend/abi")
   } else {
     console.log("frontend/abi not found; skipped copying ABIs")
   }

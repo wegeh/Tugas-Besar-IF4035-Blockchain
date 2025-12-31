@@ -106,10 +106,14 @@ export default function ProjectPage() {
             const to = await contract.getAddress()
 
             toast.info("Signing Request", { description: "Submitting project to registry..." })
+            console.log("Creating MetaTx...")
             const { request, signature } = await createMetaTx(signer, forwarderAddress, to, data)
+            console.log("MetaTx Signed:", signature)
 
             toast.info("Processing", { description: "Sending submission..." })
+            console.log("Sending to Relayer...")
             const result = await sendMetaTx(request, signature)
+            console.log("Relayer Result:", result)
 
             toast.success("Success!", { description: `Project submitted. Hash: ${ipfsHash.slice(0, 10)}...` })
 

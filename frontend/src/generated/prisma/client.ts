@@ -54,3 +54,23 @@ export type CompliancePeriod = Prisma.CompliancePeriodModel
  * 
  */
 export type Allocation = Prisma.AllocationModel
+/**
+ * Model Market
+ * 
+ */
+export type Market = Prisma.MarketModel
+/**
+ * Model AuctionWindow
+ * 
+ */
+export type AuctionWindow = Prisma.AuctionWindowModel
+/**
+ * Model Order
+ * 
+ */
+export type Order = Prisma.OrderModel
+/**
+ * Model Trade
+ * 
+ */
+export type Trade = Prisma.TradeModel

@@ -21,6 +21,7 @@ model User {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   allocations   Allocation[]
+  orders        Order[]
 }
 
 model CompliancePeriod {
@@ -44,4 +45,115 @@ model Allocation {
   period     CompliancePeriod @relation(fields: [periodYear], references: [year])
 
   @@unique([companyId, periodYear])
+}
+
+// =============== TRADING MODELS ===============
+
+enum OrderSide {
+  BID // Buy order
+  ASK // Sell order
+}
+
+enum OrderStatus {
+  OPEN
+  FILLED
+  PARTIALLY_FILLED
+  CANCELLED
+}
+
+enum MarketType {
+  SPE
+  PTBAE
+}
+
+enum AuctionStatus {
+  OPEN // Collecting orders
+  CLOSED // Window ended, calculating clearing price
+  SETTLED // Settlement completed on-chain
+}
+
+// Market represents a unique trading pair (SPE tokenId or PTBAE period)
+model Market {
+  id                String     @id @default(uuid())
+  marketKey         String     @unique
+  marketType        MarketType
+  tokenId           String? // For SPE markets
+  periodYear        Int? // For PTBAE markets
+  basePrice         String // One-time indicative opening price
+  lastClearingPrice String? // Last auction clearing price
+  isOpen            Boolean    @default(true)
+  expiresAt         DateTime? // Market expiration timestamp
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  auctionWindows AuctionWindow[]
+
+  @@index([marketType])
+}
+
+// AuctionWindow represents a single call auction session
+model AuctionWindow {
+  id               String        @id @default(uuid())
+  marketKey        String
+  market           Market        @relation(fields: [marketKey], references: [marketKey])
+  windowNumber     Int // Sequential window number for this market
+  startTime        DateTime
+  endTime          DateTime
+  clearingPrice    String? // Calculated at window close
+  totalVolume      String? // Total matched volume
+  status           AuctionStatus @default(OPEN)
+  settlementTxHash String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  orders Order[]
+
+  @@unique([marketKey, windowNumber])
+  @@index([status])
+}
+
+model Order {
+  id           String      @id @default(uuid())
+  onChainId    BigInt? // Now optional - assigned after on-chain escrow
+  marketType   MarketType
+  marketKey    String
+  tokenId      String? // For SPE markets
+  periodYear   Int? // For PTBAE markets
+  ptbaeAddress String? // For PTBAE markets
+  side         OrderSide
+  price        String // Price in IDRC (wei)
+  amount       String // Amount of tokens (wei)
+  filledAmount String      @default("0")
+  status       OrderStatus @default(OPEN)
+  traderId     String
+  trader       User        @relation(fields: [traderId], references: [id])
+  txHash       String? // Escrow tx hash (optional until escrow placed)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Auction window relation
+  auctionWindowId String?
+  auctionWindow   AuctionWindow? @relation(fields: [auctionWindowId], references: [id])
+
+  tradesAsBuyer  Trade[] @relation("BuyerOrders")
+  tradesAsSeller Trade[] @relation("SellerOrders")
+
+  @@index([marketKey, status])
+  @@index([traderId])
+  @@index([auctionWindowId])
+}
+
+model Trade {
+  id          String   @id @default(uuid())
+  marketKey   String
+  buyOrderId  String
+  buyOrder    Order    @relation("BuyerOrders", fields: [buyOrderId], references: [id])
+  sellOrderId String
+  sellOrder   Order    @relation("SellerOrders", fields: [sellOrderId], references: [id])
+  price       String // Clearing price
+  amount      String
+  txHash      String // Batch settlement tx hash
+  executedAt  DateTime @default(now())
+
+  @@index([marketKey])
 }

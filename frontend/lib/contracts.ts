@@ -5,6 +5,8 @@ import ptbaeAbi from "@/abi/PTBAEAllowanceToken.json"
 import oracleAbi from "@/abi/MRVOracle.json"
 import submissionAbi from "@/abi/EmissionSubmission.json"
 import registryAbi from "@/abi/GreenProjectRegistry.json"
+import idrcAbi from "@/abi/IDRStable.json"
+import exchangeAbi from "@/abi/CarbonExchange.json"
 import addresses from "@/abi/addresses.local.json"
 
 const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || (addresses as any).rpc || "http://127.0.0.1:8545"
@@ -17,6 +19,8 @@ export const forwarderAddress = (addresses as any).Forwarder?.address || ""
 export const oracleAddress = (addresses as any).MRVOracle?.address || ""
 export const submissionAddress = (addresses as any).EmissionSubmission?.address || ""
 export const registryAddress = (addresses as any).GreenProjectRegistry?.address || ""
+export const idrcAddress = (addresses as any).IDRStable?.address || ""
+export const exchangeAddress = (addresses as any).CarbonExchange?.address || ""
 export const DEBUG_FACTORY_ADDRESS = factoryAddress
 
 // Local PoA network configuration
@@ -136,7 +140,45 @@ export function getOracleContract(providerOrSigner: Provider | Signer): Contract
   return new Contract(oracleAddress, oracleAbi.abi, providerOrSigner)
 }
 
+export function getIdrcContract(providerOrSigner: Provider | Signer): Contract {
+  if (!idrcAddress) throw new Error("IDRStable contract address not set")
+  return new Contract(idrcAddress, idrcAbi.abi, providerOrSigner)
+}
+
+export function getExchangeContract(providerOrSigner: Provider | Signer): Contract {
+  if (!exchangeAddress) throw new Error("CarbonExchange contract address not set")
+  return new Contract(exchangeAddress, exchangeAbi.abi, providerOrSigner)
+}
+
 // --- Helper Functions ---
+
+/**
+ * Get user's IDRC balance
+ */
+export async function getIdrcBalance(address: string): Promise<string> {
+  const provider = getReadOnlyProvider()
+  const contract = getIdrcContract(provider)
+  try {
+    const balance = await contract.balanceOf(address)
+    return balance.toString()
+  } catch {
+    return "0"
+  }
+}
+
+/**
+ * Check when user can claim IDRC faucet again
+ */
+export async function getNextFaucetClaim(address: string): Promise<number> {
+  const provider = getReadOnlyProvider()
+  const contract = getIdrcContract(provider)
+  try {
+    const nextClaim = await contract.nextFaucetClaim(address)
+    return Number(nextClaim)
+  } catch {
+    return 0
+  }
+}
 
 export async function getSPEBalance(address: string, tokenId: number = 1): Promise<string> {
   const provider = getReadOnlyProvider()
@@ -179,6 +221,27 @@ export async function isTokenIssued(tokenId: bigint): Promise<boolean> {
   } catch {
     // Token doesn't exist
     return false
+  }
+}
+
+/**
+ * Get SPE Unit Metadata for a tokenId
+ */
+export async function getSPEUnit(tokenId: number | bigint): Promise<UnitMeta | null> {
+  const provider = getReadOnlyProvider()
+  const contract = getSpeContract(provider)
+  try {
+    const unit = await contract.getUnit(tokenId)
+    // unit is [projectId, vintageYear, methodology, registryRef]
+    return {
+      projectId: unit[0],
+      vintageYear: Number(unit[1]),
+      methodology: unit[2],
+      registryRef: unit[3]
+    }
+  } catch (error) {
+    console.error(`Error fetching SPE unit for token ${tokenId}:`, error)
+    return null
   }
 }
 

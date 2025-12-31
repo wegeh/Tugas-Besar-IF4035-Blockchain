@@ -19,6 +19,7 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
     mapping(uint32 => address) public tokenByPeriod;
 
     event PeriodOpened(uint32 indexed period, address token);
+    event PeriodFinalized(uint32 indexed period, address token);
 
     constructor(
         address admin, 
@@ -44,6 +45,12 @@ contract PTBAEFactory is AccessControl, ERC2771Context {
     function openPeriod(uint32 newPeriod) external onlyRole(REGULATOR_ROLE) {
         if (tokenByPeriod[newPeriod] != address(0)) revert PeriodAlreadyExists(newPeriod);
         _openPeriod(newPeriod, _msgSender());
+    }
+
+    function finalizePeriod(uint32 period) external onlyRole(REGULATOR_ROLE) {
+        address token = tokenByPeriod[period];
+        require(token != address(0), "Period not found");
+        emit PeriodFinalized(period, token);
     }
 
     function _openPeriod(uint32 p, address regulator) internal {

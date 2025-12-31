@@ -15,9 +15,9 @@ services:
       --http.corsdomain="*"
       --http.vhosts="*"
       --allow-insecure-unlock
-      --unlock "0xE06D8C05D9F63310fd3180F4B214955F11051b5b,0x4a1955f8887c628D8fcFC1961460fEBAbA333435"
+      --unlock "0xd5fED49914d0A416090c6F4A472ACd749607AF02,0x3afAcB2BD002790CAfC93E4F2E07210AC82412f2"
       --password /data/password.txt
-      --miner.etherbase "0xE06D8C05D9F63310fd3180F4B214955F11051b5b"
+      --miner.etherbase "0xd5fED49914d0A416090c6F4A472ACd749607AF02"
       --mine
       --syncmode full
       --ipcdisable
@@ -33,4 +33,5 @@ services:
       - ./ipfs_data:/data/ipfs
     environment:
       - IPFS_PROFILE=server
+    command: ["daemon", "--offline"]
     restart: unless-stopped

@@ -205,8 +205,7 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
     // ERC20 Hook to enforce rules
     function _update(address from, address to, uint256 value) internal override(ERC20) {
         if (from != address(0) && to != address(0)) {
-            // Normal Transfer: Allowed ONLY in ACTIVE
-            if (status != PeriodStatus.ACTIVE) revert TransferRestricted();
+            // Normal Transfer: Allowed anytime (User Request)
         }
         // Mint (from=0) and Burn (to=0) logic is controlled by allocate/surrender functions
         super._update(from, to, value);
