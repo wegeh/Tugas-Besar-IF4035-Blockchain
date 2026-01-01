@@ -102,8 +102,10 @@ fe-seed: fe-install
 # -----------------------
 .PHONY: run
 run: bootstrap
+	@echo ">> Building Frontend..."
+	@cd $(FE_DIR) && pnpm run build
 	@echo ">> Starting Services (Postgres & Chain running in Docker)..."
-	@echo ">> Launching Frontend and Oracle locally..."
+	@echo ">> Launching Frontend (Production Mode) and Oracle locally..."
 	@npx concurrently -k \
 		"cd oracle-service && pnpm run start" \
-		"cd frontend && pnpm run dev"
+		"cd frontend && pnpm run start"
