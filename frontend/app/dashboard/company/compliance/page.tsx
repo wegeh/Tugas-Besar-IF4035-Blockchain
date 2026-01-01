@@ -123,35 +123,43 @@ export default function CompliancePage() {
                 )
                 setPeriodAllocations(allocations)
 
-                // 2. Get Compliance Info
+                // 2. Get Compliance Info & Calculate Cumulative Prior Debt
                 const infoMap = new Map<number, PeriodCompliance>()
+                const tempRawInfos = new Map<number, any>()
+
+                // Phase A: Fetch all raw data from contracts
                 for (const period of allocations) {
                     const info = await getComplianceInfo(period.year, address)
-                    if (info) {
-                        // Fetch Prior Debt
-                        let priorDebt = "0"
-                        if (period.year > 2024) { // Assuming 2024 is start, or just check > min year
-                            try {
-                                const prevInfo = await getComplianceInfo(period.year - 1, address)
-                                if (prevInfo) {
-                                    priorDebt = (BigInt(prevInfo.debt) / BigInt(10 ** 18)).toString()
-                                }
-                            } catch (e) {
-                                console.warn("No prior period info found", e)
-                            }
-                        }
+                    if (info) tempRawInfos.set(period.year, info)
+                }
 
-                        infoMap.set(period.year, {
-                            year: period.year,
-                            tokenAddress: period.tokenAddress || "",
-                            verifiedEmission: (BigInt(info.verifiedEmission) / BigInt(10 ** 18)).toString(),
-                            surrendered: (BigInt(info.surrendered) / BigInt(10 ** 18)).toString(),
-                            debt: (BigInt(info.debt) / BigInt(10 ** 18)).toString(),
-                            priorDebt: priorDebt,
-                            status: Number(info.status),
-                            balance: "0"
-                        })
-                    }
+                // Phase B: Calculate Accumulation (Oldest to Newest)
+                // This ensures debt from 2024 carries to 2025, and (2024+2025) carries to 2026
+                const sortedYears = allocations.map(p => p.year).sort((a, b) => a - b)
+                let runningCumulativeDebt = BigInt(0)
+
+                for (const year of sortedYears) {
+                    const info = tempRawInfos.get(year)
+                    const allocation = allocations.find(p => p.year === year)
+                    if (!info || !allocation) continue;
+
+                    const currentLocalDebt = BigInt(info.debt)
+                    // Prior Debt for THIS year is the Running Sum of previous years
+                    const priorDebtValue = runningCumulativeDebt
+
+                    infoMap.set(year, {
+                        year: year,
+                        tokenAddress: allocation.tokenAddress || "",
+                        verifiedEmission: (BigInt(info.verifiedEmission) / BigInt(10 ** 18)).toString(),
+                        surrendered: (BigInt(info.surrendered) / BigInt(10 ** 18)).toString(),
+                        debt: (currentLocalDebt / BigInt(10 ** 18)).toString(), // Local Net Debt
+                        priorDebt: (priorDebtValue / BigInt(10 ** 18)).toString(), // Cumulative Prior
+                        status: Number(info.status),
+                        balance: "0"
+                    })
+
+                    // Add local debt to cumulative for the NEXT year
+                    runningCumulativeDebt += currentLocalDebt
                 }
                 setComplianceInfo(infoMap)
 
