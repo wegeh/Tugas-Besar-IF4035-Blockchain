@@ -33,15 +33,16 @@ async function main() {
     // 1. Seed Regulators
     console.log('Seeding Regulators...')
     for (const reg of REGULATORS) {
+        const normalizedAddress = reg.walletAddress.toLowerCase()
         const user = await prisma.user.upsert({
-            where: { walletAddress: reg.walletAddress },
+            where: { walletAddress: normalizedAddress },
             update: {
                 role: Role.REGULATOR,
                 companyName: reg.companyName,
                 email: reg.email
             },
             create: {
-                walletAddress: reg.walletAddress,
+                walletAddress: normalizedAddress,
                 role: Role.REGULATOR,
                 companyName: reg.companyName,
                 email: reg.email
@@ -55,15 +56,16 @@ async function main() {
     // 2. Seed Companies
     console.log('Seeding Companies...')
     for (const comp of COMPANIES) {
+        const normalizedAddress = comp.walletAddress.toLowerCase()
         const user = await prisma.user.upsert({
-            where: { walletAddress: comp.walletAddress },
+            where: { walletAddress: normalizedAddress },
             update: {
                 role: Role.COMPANY,
                 companyName: comp.companyName,
                 email: comp.email
             },
             create: {
-                walletAddress: comp.walletAddress,
+                walletAddress: normalizedAddress,
                 role: Role.COMPANY,
                 companyName: comp.companyName,
                 email: comp.email

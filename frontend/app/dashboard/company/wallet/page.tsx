@@ -16,7 +16,7 @@ import {
     getIdrcContract,
     getIdrcBalance,
     getNextFaucetClaim,
-    idrcAddress
+    idrsAddress
 } from "@/lib/contracts"
 
 function formatBalance(weiValue: string): string {
@@ -70,7 +70,7 @@ export default function WalletPage() {
             const data = idrcContract.interface.encodeFunctionData("claimFaucet", [])
 
             toast.info("Signing faucet claim...")
-            const { request, signature } = await createMetaTx(signer, forwarderAddress, idrcAddress, data)
+            const { request, signature } = await createMetaTx(signer, forwarderAddress, idrsAddress, data)
 
             toast.info("Processing claim...")
             await sendMetaTx(request, signature)

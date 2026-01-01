@@ -8,7 +8,10 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "pg": "^8.11.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
     "ethers": "^6.16.0",
-    "dotenv": "^16.4.0"
+    "express": "^5.2.1"
   }
 }

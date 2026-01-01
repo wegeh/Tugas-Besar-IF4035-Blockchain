@@ -48,6 +48,21 @@ export async function getAllocatedCompanies(periodYear: number) {
     return allocations
 }
 
+// Get ALL companies regardless of allocation status
+export async function getAllCompanies() {
+    const companies = await prisma.user.findMany({
+        where: { role: Role.COMPANY },
+        select: {
+            id: true,
+            companyName: true,
+            walletAddress: true,
+            email: true
+        },
+        orderBy: { companyName: 'asc' }
+    })
+    return companies
+}
+
 // Record a new allocation in the database (called after meta-tx success)
 export async function recordAllocation(periodYear: number, companyWalletAddresses: string[], amount: string, txHash: string) {
     try {

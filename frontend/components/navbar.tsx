@@ -74,7 +74,7 @@ export function Navbar() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="border-white/20 hover:bg-white/5 bg-transparent"
+                  className="border-white/20 hover:bg-white/5 hover:text-white bg-transparent"
                   onClick={handleLogout}
                 >
                   <LogOut className="w-4 h-4 mr-2" />
@@ -101,7 +101,7 @@ export function Navbar() {
                   asChild
                   size="sm"
                   variant="outline"
-                  className="border-white/20 hover:bg-white/5 bg-transparent"
+                  className="border-white/20 hover:bg-white/5 hover:text-white bg-transparent"
                 >
                   <Link href="/auth" className="flex items-center gap-2">
                     <LogIn className="w-4 h-4" />

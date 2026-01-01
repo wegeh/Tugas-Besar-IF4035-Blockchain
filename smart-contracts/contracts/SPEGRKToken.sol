@@ -21,40 +21,39 @@ contract SPEGRKToken is ERC1155, AccessControl, ERC2771Context {
     mapping(uint256 => UnitMeta) public unitMeta;
     mapping(uint256 => Status) public status;
     mapping(uint256 => bytes32) public docHash;
-    mapping(uint256 => uint64)  public issuedAt;
-    mapping(uint256 => uint64)  public retiredAt;
-
-    // supply tracking per tokenId (penting utk batch retirement)
+    mapping(uint256 => uint64) public issuedAt;
+    mapping(uint256 => uint64) public retiredAt;
     mapping(uint256 => uint256) public totalSupply;
 
-    // External Oracle reference
     MRVOracle public oracle;
-    
-    // Prevent double spending of attestations
-    mapping(bytes32 => bool) public usedAttestations;
 
     event SPEIssued(uint256 indexed tokenId, address indexed to, uint256 amount, bytes32 attestationId);
     event SPERetired(uint256 indexed tokenId, address indexed holder, uint256 amount);
 
-    // Custom Errors (gas efficient + better UX)
     error InvalidRecipient();
     error InvalidAmount();
     error TokenAlreadyIssued(uint256 tokenId);
     error InvalidAttestation(bytes32 attestationId);
-    error AttestationAlreadyUsed(bytes32 attestationId);
     error MetadataMismatch(bytes32 expected, bytes32 actual);
     error AlreadyRetired(uint256 tokenId);
     error InsufficientBalance(uint256 available, uint256 required);
 
-    constructor(string memory uri_, address admin, address regulator, address oracleAddress, address trustedForwarder) 
-        ERC1155(uri_) 
-        ERC2771Context(trustedForwarder)
-    {
+    constructor(
+        string memory uri_,
+        address admin,
+        address regulator,
+        address oracleAddress,
+        address trustedForwarder
+    ) ERC1155(uri_) ERC2771Context(trustedForwarder) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGULATOR_ROLE, regulator);
         oracle = MRVOracle(oracleAddress);
     }
 
+    /**
+     * @notice Issue SPE tokens based on Oracle attestation
+     * @dev Validates attestation, consumes it, then mints tokens
+     */
     function issueSPE(
         uint256 tokenId,
         address to,
@@ -64,29 +63,28 @@ contract SPEGRKToken is ERC1155, AccessControl, ERC2771Context {
     ) external onlyRole(REGULATOR_ROLE) {
         if (to == address(0)) revert InvalidRecipient();
         if (amount == 0) revert InvalidAmount();
-
-        // tokenId = batch => only once issuance
         if (issuedAt[tokenId] != 0) revert TokenAlreadyIssued(tokenId);
 
-        // Check attestation from external Oracle
-        (bytes32 aDocHash, bytes32 aMetaHash, bool valid, ) = oracle.getAttestation(attestationId);
-        if (!valid) revert InvalidAttestation(attestationId);
-        if (usedAttestations[attestationId]) revert AttestationAlreadyUsed(attestationId);
+        // 1. Get attestation from Oracle
+        MRVOracle.Attestation memory att = oracle.getAttestation(attestationId);
+        
+        if (!att.valid) revert InvalidAttestation(attestationId);
+        if (att.amount != amount) revert InvalidAmount();
 
-        // bind meta to attestation
+        // 2. Verify metadata integrity
         bytes32 computedMetaHash = keccak256(
             abi.encode(meta.projectId, meta.vintageYear, meta.methodology, meta.registryRef)
         );
-        if (computedMetaHash != aMetaHash) revert MetadataMismatch(aMetaHash, computedMetaHash);
+        if (computedMetaHash != att.metaHash) revert MetadataMismatch(att.metaHash, computedMetaHash);
 
-        // commit data
+        // 3. Consume attestation (marks as used, checks expiry)
+        oracle.consumeAttestation(attestationId);
+
+        // 4. Commit data and mint
         unitMeta[tokenId] = meta;
-        docHash[tokenId] = aDocHash;
+        docHash[tokenId] = att.docHash;
         status[tokenId] = Status.ACTIVE;
         issuedAt[tokenId] = uint64(block.timestamp);
-
-        // mark attestation used locally
-        usedAttestations[attestationId] = true;
 
         _mint(to, tokenId, amount, "");
         totalSupply[tokenId] += amount;
@@ -105,7 +103,6 @@ contract SPEGRKToken is ERC1155, AccessControl, ERC2771Context {
 
         emit SPERetired(tokenId, _msgSender(), amount);
 
-        // batch considered retired only when supply reaches 0
         if (totalSupply[tokenId] == 0) {
             status[tokenId] = Status.RETIRED;
             retiredAt[tokenId] = uint64(block.timestamp);
@@ -124,20 +121,10 @@ contract SPEGRKToken is ERC1155, AccessControl, ERC2771Context {
             uint256 supply
         )
     {
-        meta = unitMeta[tokenId];
-        st = status[tokenId];
-        mrvDocHash = docHash[tokenId];
-        issued = issuedAt[tokenId];
-        retired = retiredAt[tokenId];
-        supply = totalSupply[tokenId];
+        return (unitMeta[tokenId], status[tokenId], docHash[tokenId], issuedAt[tokenId], retiredAt[tokenId], totalSupply[tokenId]);
     }
 
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(ERC1155, AccessControl)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 

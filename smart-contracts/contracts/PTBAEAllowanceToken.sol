@@ -8,11 +8,15 @@ import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import "./interfaces/IMRVOracle.sol";
 import "./SPEGRKToken.sol";
 
+/**
+ * @title PTBAEAllowanceToken
+ * @notice ERC20 token for PTBAE compliance with hybrid SPE offset and cross-period burn
+ */
 contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Holder {
     bytes32 public constant REGULATOR_ROLE = keccak256("REGULATOR_ROLE");
     
     enum PeriodStatus { ACTIVE, AUDIT, ENDED }
-    enum ComplianceStatus { NO_DATA, PENDING, COMPLIANT }
+    enum ComplianceStatus { NO_DATA, PENDING, COMPLIANT, NON_COMPLIANT }
     
     uint32 public immutable period;
     IMRVOracle public immutable oracle;
@@ -22,26 +26,21 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
     mapping(address => uint256) public surrendered;
     mapping(address => ComplianceStatus) public complianceStatus;
     mapping(address => bool) public hasSurrendered;
+    mapping(address => uint256) public carbonDebt;  // Debt in wei for non-compliant users
 
+    // IDRS & Debt Integration
+    address public treasury;
+    address public oracleSigner;
+    IERC20 public idrsToken;
+    PTBAEAllowanceToken public previousPeriodToken;
+
+    event IDRSPayment(address indexed user, uint256 idrsAmount, uint256 tonsOffset);
     event Allocated(address indexed to, uint256 amount);
     event Surrendered(address indexed from, uint256 amount, uint256 remaining);
     event StatusChanged(uint32 period, PeriodStatus status);
     event ComplianceUpdated(address indexed user, ComplianceStatus status);
-
-    // Custom Errors
-    error PeriodNotActive();
-    error InvalidRecipient();
-    error InvalidAmount();
-    error NoRecipients();
-    error ArrayLengthMismatch();
-    error SurrenderOnlyInAuditPhase();
-    error VintageTooNew(uint16 vintage, uint32 period);
-    error NoVerifiedEmissionData();
-    error AlreadySurrendered();
-    error InsufficientPTBAEBalance(uint256 available, uint256 required);
-    error NotActive();
-    error AlreadyEnded();
-    error TransferRestricted();
+    event BurnedForCompliance(address indexed user, uint256 amount, uint32 fromPeriod, uint32 forPeriod);
+    event NonCompliantMarked(address indexed user, uint256 emission, uint256 surrendered, uint256 debt);
 
     constructor(
         address admin, 
@@ -62,161 +61,286 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
     }
 
     function allocate(address to, uint256 amount) external onlyRole(REGULATOR_ROLE) {
-        if (status != PeriodStatus.ACTIVE) revert PeriodNotActive();
-        if (to == address(0)) revert InvalidRecipient();
-        if (amount == 0) revert InvalidAmount();
+        require(status == PeriodStatus.ACTIVE, "Not active");
+        require(to != address(0) && amount > 0, "Invalid");
         _mint(to, amount);
         emit Allocated(to, amount);
     }
 
     function batchAllocate(address[] calldata recipients, uint256 amount) external onlyRole(REGULATOR_ROLE) {
-        if (status != PeriodStatus.ACTIVE) revert PeriodNotActive();
-        if (amount == 0) revert InvalidAmount();
-        if (recipients.length == 0) revert NoRecipients();
-        
+        require(status == PeriodStatus.ACTIVE && amount > 0 && recipients.length > 0, "Invalid");
         for (uint256 i = 0; i < recipients.length; i++) {
-            address to = recipients[i];
-            if (to != address(0)) {
-                _mint(to, amount);
-                emit Allocated(to, amount);
+            if (recipients[i] != address(0)) {
+                _mint(recipients[i], amount);
+                emit Allocated(recipients[i], amount);
             }
         }
     }
 
+    // Setters for new config
+    function setTreasury(address _treasury) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        treasury = _treasury;
+    }
+
+    function setIDRSToken(address _idrsToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        idrsToken = IERC20(_idrsToken);
+    }
+
+    function setOracleSigner(address _signer) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        oracleSigner = _signer;
+    }
+
+    function setPreviousPeriodToken(address _token) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        previousPeriodToken = PTBAEAllowanceToken(_token);
+    }
+
+
     /**
-     * @notice Surrender normal (hanya bayar pakai PTBAE balance sendiri)
+     * @notice Burn tokens from this period for compliance in a target period
      */
-    function surrender() external {
-        _performSurrender(_msgSender(), 0);
+    function burnForCompliance(address user, uint256 amount, uint32 targetPeriod) external {
+        require(_msgSender() == user, "Only owner");
+        require(period <= targetPeriod && amount > 0, "Invalid");
+        require(balanceOf(user) >= amount, "Insufficient");
+        _burn(user, amount);
+        emit BurnedForCompliance(user, amount, period, targetPeriod);
     }
 
     /**
-     * @notice Surrender dengan kombinasi SPE-GRK (Offset Carbon Credit)
-     * @dev User harus approve PTBAE contract di SPE contract dulu.
+     * @notice Mark compliance complete after cross-period burns (called after burnForCompliance)
      */
-    function surrenderWithOffset(uint256[] calldata speIds, uint256[] calldata speAmounts) external {
-        uint256 totalOffset = 0;
-
-        if (speIds.length != speAmounts.length) revert ArrayLengthMismatch();
-        if (status != PeriodStatus.AUDIT) revert SurrenderOnlyInAuditPhase();
-
-        // Process each SPE token
-        for (uint256 i = 0; i < speIds.length; i++) {
-            uint256 id = speIds[i];
-            uint256 amt = speAmounts[i];
-
-            if (amt > 0) {
-                // 1. Validate Vintage Year <= Compliance Period
-                (SPEGRKToken.UnitMeta memory meta, , , , , ) = speToken.getUnit(id);
-                if (meta.vintageYear > period) revert VintageTooNew(meta.vintageYear, period);
-
-                // 2. Transfer SPE from User to Contract
-                speToken.safeTransferFrom(_msgSender(), address(this), id, amt, "");
-
-                // 3. Retire/Burn SPE (since contract is now owner)
-                speToken.retireSPE(id, amt);
-
-                totalOffset += amt;
-            }
-        }
-
-        // Perform rest of surrender logic
-        _performSurrender(_msgSender(), totalOffset);
-    }
-
-    function _performSurrender(address user, uint256 offsetAmount) internal {
-        // 1. Check phase
-        if (status != PeriodStatus.AUDIT) revert SurrenderOnlyInAuditPhase();
-        
-        // 2. Get verified emission (tagihan) from Oracle
+    function markComplianceComplete(address user) external {
+        require(_msgSender() == user, "Only owner");
+        require(status == PeriodStatus.AUDIT, "Not audit");
         uint256 tagihan = oracle.getVerifiedEmission(period, user);
-        if (tagihan == 0) revert NoVerifiedEmissionData();
+        require(tagihan > 0, "No emission");
+        require(!hasSurrendered[user], "Already done");
         
-        // 3. Check if already paid
-        if (hasSurrendered[user]) revert AlreadySurrendered();
-        
-        // 4. Calculate remaining to pay with PTBAE
-        uint256 remainingToPay = 0;
-        if (tagihan > offsetAmount) {
-            remainingToPay = tagihan - offsetAmount;
-        }
-
-        // 5. Check PTBAE balance if needed
-        if (remainingToPay > 0) {
-            uint256 bal = balanceOf(user);
-            if (bal < remainingToPay) revert InsufficientPTBAEBalance(bal, remainingToPay);
-            _burn(user, remainingToPay);
-        }
-        
-        // 6. Record & Update
-        surrendered[user] = tagihan; // Marked as full obligation met
+        surrendered[user] = tagihan;
         hasSurrendered[user] = true;
-        
-        // 7. Update compliance status
         complianceStatus[user] = ComplianceStatus.COMPLIANT;
         emit ComplianceUpdated(user, ComplianceStatus.COMPLIANT);
-        
         emit Surrendered(user, tagihan, 0);
     }
 
     /**
-     * @notice Get compliance info untuk user
+     * @notice Surrender with Hybrid payment (SPE + Cross-Period + IDRS + Current PTBAE + Debt)
      */
+    function surrenderHybrid(
+        uint256[] calldata speIds, 
+        uint256[] calldata speAmounts,
+        uint256 alreadyPaidFromOtherPeriods,
+        uint256 idrsPaymentAmount,
+        uint256 rate,
+        uint256 timestamp,
+        bytes memory signature
+    ) external {
+        require(status == PeriodStatus.AUDIT, "Not audit");
+        
+        address user = _msgSender();
+        uint256 currentEmission = oracle.getVerifiedEmission(period, user);
+        require(currentEmission > 0, "No emission");
+        require(!hasSurrendered[user], "Already done");
+
+        // 1. Calculate Total Obligation (Current + Previous Debt)
+        uint256 priorDebt = 0;
+        if (address(previousPeriodToken) != address(0)) {
+            (,, priorDebt,) = previousPeriodToken.getDebtInfo(user);
+        }
+        uint256 totalTagihan = currentEmission + priorDebt;
+
+        uint256 totalOffset = alreadyPaidFromOtherPeriods;
+
+        // 2. Process SPE tokens
+        for (uint256 i = 0; i < speIds.length; i++) {
+            uint256 id = speIds[i];
+            uint256 amt = speAmounts[i];
+            if (amt > 0) {
+                (SPEGRKToken.UnitMeta memory meta, , , , , ) = speToken.getUnit(id);
+                require(meta.vintageYear <= period, "Vintage too new");
+                // Enforce 2-Year Validity Limit
+                require(period - meta.vintageYear <= 2, "Token Expired (>2y)");
+
+                speToken.safeTransferFrom(user, address(this), id, amt, "");
+                speToken.retireSPE(id, amt);
+                totalOffset += amt;
+            }
+        }
+
+        // 3. Process IDRS Payment
+        if (idrsPaymentAmount > 0) {
+            require(address(idrsToken) != address(0) && treasury != address(0), "IDRS not setup");
+            require(block.timestamp - timestamp < 600, "Price expired"); 
+            require(_verifyPriceSignature(rate, timestamp, signature), "Inv sig");
+
+            uint256 idrsTons = (idrsPaymentAmount * 1e18) / rate;
+            require(idrsToken.transferFrom(user, treasury, idrsPaymentAmount), "Trf fail");
+            
+            totalOffset += idrsTons;
+            emit IDRSPayment(user, idrsPaymentAmount, idrsTons);
+        }
+
+        // 4. Calculate remaining to pay with PTBAE
+        uint256 remaining = totalTagihan > totalOffset ? totalTagihan - totalOffset : 0;
+        
+        if (remaining > 0) {
+            uint256 bal = balanceOf(user);
+            require(bal >= remaining, "Insufficient PTBAE");
+            _burn(user, remaining);
+        }
+
+        surrendered[user] = totalTagihan;
+        hasSurrendered[user] = true;
+        complianceStatus[user] = ComplianceStatus.COMPLIANT;
+        emit ComplianceUpdated(user, ComplianceStatus.COMPLIANT);
+        emit Surrendered(user, totalTagihan, 0);
+    }
+
+    function _verifyPriceSignature(uint256 rate, uint256 ts, bytes memory sig) internal view returns (bool) {
+        bytes32 hash = keccak256(abi.encodePacked(rate, ts));
+        bytes32 ethHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
+        (bytes32 r, bytes32 s, uint8 v) = _splitSignature(sig);
+        return ecrecover(ethHash, v, r, s) == oracleSigner;
+    }
+
+    function _splitSignature(bytes memory sig) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
+        require(sig.length == 65, "inv sig len");
+        assembly {
+            r := mload(add(sig, 32))
+            s := mload(add(sig, 64))
+            v := byte(0, mload(add(sig, 96)))
+        }
+    }
+
+    /**
+     * @notice Legacy surrender (single period, no SPE)
+     */
+    function surrender() external {
+        require(status == PeriodStatus.AUDIT, "Not audit");
+        address user = _msgSender();
+        uint256 tagihan = oracle.getVerifiedEmission(period, user);
+        require(tagihan > 0, "No emission");
+        require(!hasSurrendered[user], "Already done");
+        
+        uint256 bal = balanceOf(user);
+        require(bal >= tagihan, "Insufficient");
+        _burn(user, tagihan);
+        
+        surrendered[user] = tagihan;
+        hasSurrendered[user] = true;
+        complianceStatus[user] = ComplianceStatus.COMPLIANT;
+        emit ComplianceUpdated(user, ComplianceStatus.COMPLIANT);
+        emit Surrendered(user, tagihan, 0);
+    }
+
     function getCompliance(address account)
-        external
-        view
-        returns (
-            uint32 p, 
-            uint256 balance, 
-            uint256 surrenderedAmt,
-            uint256 verifiedEmission,
-            uint256 debt,
-            ComplianceStatus cStatus
-        )
+        external view
+        returns (uint32, uint256, uint256, uint256, uint256, ComplianceStatus)
     {
         uint256 emission = oracle.getVerifiedEmission(period, account);
         uint256 paid = surrendered[account];
         uint256 remaining = emission > paid ? emission - paid : 0;
         
         ComplianceStatus cs = complianceStatus[account];
-        if (emission == 0) {
-            cs = ComplianceStatus.NO_DATA;
-        } else if (paid >= emission) {
-            cs = ComplianceStatus.COMPLIANT;
-        } else {
-            cs = ComplianceStatus.PENDING;
-        }
         
+        if (status == PeriodStatus.ENDED) {
+            // Priority Check: Period Ended
+            if (emission == 0 && paid == 0) {
+                // NO DATA -> Flat Penalty 1000 Ton
+                cs = ComplianceStatus.NON_COMPLIANT;
+                remaining = 1000 * 10**18;
+            } else if (paid < emission) {
+                cs = ComplianceStatus.NON_COMPLIANT;
+            } else {
+                cs = ComplianceStatus.COMPLIANT;
+            }
+        } else {
+            // Active / Audit
+            if (emission == 0) {
+                cs = ComplianceStatus.NO_DATA;
+            } else if (paid >= emission) {
+                cs = ComplianceStatus.COMPLIANT;
+            } else {
+                cs = ComplianceStatus.PENDING;
+            }
+        }
+            
         return (period, balanceOf(account), paid, emission, remaining, cs);
     }
 
     function setAudit() external onlyRole(REGULATOR_ROLE) {
-        if (status != PeriodStatus.ACTIVE) revert NotActive();
+        require(status == PeriodStatus.ACTIVE, "Not active");
         status = PeriodStatus.AUDIT;
         emit StatusChanged(period, status);
     }
 
     function finalize() external onlyRole(REGULATOR_ROLE) {
-        if (status == PeriodStatus.ENDED) revert AlreadyEnded();
+        require(status != PeriodStatus.ENDED, "Already ended");
         status = PeriodStatus.ENDED;
         emit StatusChanged(period, status);
     }
 
-    // ERC20 Hook to enforce rules
-    function _update(address from, address to, uint256 value) internal override(ERC20) {
-        if (from != address(0) && to != address(0)) {
-            // Normal Transfer: Allowed anytime (User Request)
+    /**
+     * @notice Mark users as non-compliant after period ends (called by regulator)
+     * @param users Array of user addresses to check and mark
+     */
+    function markNonCompliant(address[] calldata users) external onlyRole(REGULATOR_ROLE) {
+        require(status == PeriodStatus.ENDED, "Period not ended");
+        
+        for (uint256 i = 0; i < users.length; i++) {
+            address user = users[i];
+            uint256 emission = oracle.getVerifiedEmission(period, user);
+            uint256 paid = surrendered[user];
+            
+            // Logic: If No Data (emission 0) OR Shortfall -> Mark Non-Compliant + Debt
+            if (emission == 0 && paid == 0) {
+                 // Flat Penalty 1000
+                 uint256 penalty = 1000 * 10**18;
+                 carbonDebt[user] = penalty;
+                 complianceStatus[user] = ComplianceStatus.NON_COMPLIANT;
+                 emit NonCompliantMarked(user, 0, 0, penalty);
+                 emit ComplianceUpdated(user, ComplianceStatus.NON_COMPLIANT);
+            } else if (emission > 0 && paid < emission) {
+                uint256 debt = emission - paid;
+                carbonDebt[user] = debt;
+                complianceStatus[user] = ComplianceStatus.NON_COMPLIANT;
+                emit NonCompliantMarked(user, emission, paid, debt);
+                emit ComplianceUpdated(user, ComplianceStatus.NON_COMPLIANT);
+            }
         }
-        // Mint (from=0) and Burn (to=0) logic is controlled by allocate/surrender functions
+    }
+
+    /**
+     * @notice Get debt info for a user (Auto-calculate if ended)
+     */
+    function getDebtInfo(address user) external view returns (uint256 emission, uint256 paid, uint256 debt, ComplianceStatus cs) {
+        emission = oracle.getVerifiedEmission(period, user);
+        paid = surrendered[user];
+        
+        // Auto-calculate debt if period ended
+        if (status == PeriodStatus.ENDED) {
+             if (emission == 0 && paid == 0) {
+                 // No Data -> Flat Penalty
+                 debt = 1000 * 10**18;
+                 cs = ComplianceStatus.NON_COMPLIANT;
+             } else if (emission > paid) {
+                debt = emission - paid;
+                cs = ComplianceStatus.NON_COMPLIANT;
+            } else {
+                debt = 0;
+                cs = ComplianceStatus.COMPLIANT;
+            }
+        } else {
+            debt = carbonDebt[user]; // Fallback to stored debt
+            cs = complianceStatus[user];
+        }
+    }
+
+    function _update(address from, address to, uint256 value) internal override(ERC20) {
         super._update(from, to, value);
     }
 
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(AccessControl, ERC1155Holder)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view override(AccessControl, ERC1155Holder) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 

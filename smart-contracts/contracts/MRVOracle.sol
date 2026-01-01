@@ -3,122 +3,145 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
+/**
+ * @title MRVOracle
+ * @notice Oracle contract for MRV (Monitoring, Reporting, Verification) attestations
+ * @dev Supports two models:
+ *   - PTBAE: Atomic finalization (Oracle = Finalizer)
+ *   - SPE: Attestation + Consumption (Oracle = Attester, Token = Consumer)
+ */
 contract MRVOracle is AccessControl {
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+    bytes32 public constant CONSUMER_ROLE = keccak256("CONSUMER_ROLE");
 
     struct Attestation {
-        bytes32 docHash;     // hash dokumen MRV (off-chain)
-        bytes32 metaHash;    // hash meta untuk mengikat metadata
+        uint256 amount;      // verified amount (tonCO2 or credits)
+        bytes32 docHash;     // hash of MRV document
+        bytes32 metaHash;    // hash of metadata binding
         bool valid;
+        bool isUsed;         // anti-replay flag
         uint64 attestedAt;
+        uint64 expiresAt;    // 0 = no expiry
     }
 
     mapping(bytes32 => Attestation) public attestations;
 
-    event MRVAttested(bytes32 indexed attestationId, bytes32 docHash, bytes32 metaHash, address operator);
+    // PTBAE Idempotency
+    mapping(uint32 => mapping(address => bool)) public isFinalized;
+    mapping(uint32 => mapping(address => uint256)) public verifiedEmissions;
+    mapping(uint32 => mapping(address => string)) public emissionDocumentIPFS;
+    mapping(uint32 => mapping(address => string)) public verificationReportIPFS;
+
+    // Events
+    event MRVAttested(bytes32 indexed attestationId, uint256 amount, bytes32 docHash, bytes32 metaHash, uint64 expiresAt, address operator);
+    event AttestationConsumed(bytes32 indexed attestationId, address consumer);
+    event EmissionFinalized(uint32 indexed period, address indexed user, uint256 tonCO2, bytes32 attestationId);
 
     constructor(address admin, address operator) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(OPERATOR_ROLE, operator);
     }
 
-    // Oracle menulis attestation. attestationId bisa dibuat dari docHash + metaHash + nonce
-    function attestMRV(bytes32 attestationId, bytes32 mrvDocHash, bytes32 metaHash)
-        external
-        onlyRole(OPERATOR_ROLE)
-    {
-        Attestation storage a = attestations[attestationId];
-        require(!a.valid, "attestation exists");
-
-        attestations[attestationId] = Attestation({
-            docHash: mrvDocHash,
-            metaHash: metaHash,
-            valid: true,
-            attestedAt: uint64(block.timestamp)
-        });
-
-        emit MRVAttested(attestationId, mrvDocHash, metaHash, msg.sender);
-    }
-
-    function getAttestation(bytes32 attestationId)
-        external
-        view
-        returns (
-            bytes32 docHash,
-            bytes32 metaHash,
-            bool valid,
-            uint64 attestedAt
-        )
-    {
-        Attestation memory a = attestations[attestationId];
-        return (a.docHash, a.metaHash, a.valid, a.attestedAt);
-    }
-
-    // ===================== VERIFIED EMISSIONS =====================
-    
-    // Emisi terverifikasi per period per user (ton CO2)
-    mapping(uint32 => mapping(address => uint256)) public verifiedEmissions;
-    // IPFS hash untuk dokumen pendukung (siap untuk integrasi IPFS)
-    mapping(uint32 => mapping(address => string)) public emissionDocumentIPFS;
-    mapping(uint32 => mapping(address => string)) public verificationReportIPFS;
-    
-    event EmissionVerified(uint32 indexed period, address indexed user, uint256 tonCO2, bytes32 attestationId);
+    // ===================== PTBAE: Atomic Finalization =====================
 
     /**
-     * @notice Set verified emission untuk user di period tertentu
-     * @param period Tahun periode kepatuhan
-     * @param user Alamat wallet perusahaan
-     * @param tonCO2 Jumlah emisi terverifikasi dalam ton CO2
-     * @param attestationId ID attestation MRV yang mendukung data ini
+     * @notice Finalize emission verification (PTBAE)
+     * @dev Atomic: creates attestation + sets value + marks finalized
      */
-    function setVerifiedEmission(
+    function finalizeEmission(
         uint32 period,
         address user,
         uint256 tonCO2,
-        bytes32 attestationId
-    ) external onlyRole(OPERATOR_ROLE) {
-        require(attestations[attestationId].valid, "attestation invalid");
-        require(user != address(0), "user=0");
-        
-        verifiedEmissions[period][user] = tonCO2;
-        emit EmissionVerified(period, user, tonCO2, attestationId);
-    }
-
-    /**
-     * @notice Set verified emission dengan IPFS hashes untuk audit trail
-     * @dev Extended version dengan IPFS support
-     */
-    function setVerifiedEmissionWithIPFS(
-        uint32 period,
-        address user,
-        uint256 tonCO2,
-        bytes32 attestationId,
+        bytes32 docHash,
+        bytes32 metaHash,
         string calldata docIPFS,
         string calldata reportIPFS
     ) external onlyRole(OPERATOR_ROLE) {
-        require(attestations[attestationId].valid, "attestation invalid");
-        require(user != address(0), "user=0");
-        
+        require(!isFinalized[period][user], "Oracle: Already finalized");
+        require(user != address(0), "Oracle: Invalid user");
+
+        bytes32 attestationId = keccak256(abi.encodePacked("ptbae", period, user));
+
+        attestations[attestationId] = Attestation({
+            amount: tonCO2,
+            docHash: docHash,
+            metaHash: metaHash,
+            valid: true,
+            isUsed: true,
+            attestedAt: uint64(block.timestamp),
+            expiresAt: 0
+        });
+
         verifiedEmissions[period][user] = tonCO2;
         emissionDocumentIPFS[period][user] = docIPFS;
         verificationReportIPFS[period][user] = reportIPFS;
-        
-        emit EmissionVerified(period, user, tonCO2, attestationId);
+        isFinalized[period][user] = true;
+
+        emit EmissionFinalized(period, user, tonCO2, attestationId);
+    }
+
+    // ===================== SPE: Attestation Model =====================
+
+    /**
+     * @notice Create attestation for SPE project
+     */
+    function attestProject(
+        bytes32 attestationId,
+        uint256 approvedAmount,
+        bytes32 docHash,
+        bytes32 metaHash,
+        uint64 expiryDuration
+    ) external onlyRole(OPERATOR_ROLE) {
+        require(!attestations[attestationId].valid, "Oracle: Attestation exists");
+
+        uint64 expiresAt = (expiryDuration > 0) ? uint64(block.timestamp) + expiryDuration : 0;
+
+        attestations[attestationId] = Attestation({
+            amount: approvedAmount,
+            docHash: docHash,
+            metaHash: metaHash,
+            valid: true,
+            isUsed: false,
+            attestedAt: uint64(block.timestamp),
+            expiresAt: expiresAt
+        });
+
+        emit MRVAttested(attestationId, approvedAmount, docHash, metaHash, expiresAt, msg.sender);
     }
 
     /**
-     * @notice Get verified emission untuk user di period tertentu
+     * @notice Consume attestation (called by trusted consumer like SPE Token)
      */
+    function consumeAttestation(bytes32 attestationId) external onlyRole(CONSUMER_ROLE) {
+        Attestation storage a = attestations[attestationId];
+        require(a.valid, "Oracle: Invalid attestation");
+        require(!a.isUsed, "Oracle: Already consumed");
+        if (a.expiresAt > 0) {
+            require(block.timestamp <= a.expiresAt, "Oracle: Expired");
+        }
+
+        a.isUsed = true;
+        emit AttestationConsumed(attestationId, msg.sender);
+    }
+
+    // ===================== Views =====================
+
+    function getAttestation(bytes32 attestationId) external view returns (Attestation memory) {
+        return attestations[attestationId];
+    }
+
+    function isValidAttestation(bytes32 attestationId) external view returns (bool) {
+        Attestation memory a = attestations[attestationId];
+        if (!a.valid || a.isUsed) return false;
+        if (a.expiresAt > 0 && block.timestamp > a.expiresAt) return false;
+        return true;
+    }
+
     function getVerifiedEmission(uint32 period, address user) external view returns (uint256) {
         return verifiedEmissions[period][user];
     }
 
-    /**
-     * @notice Get IPFS hashes untuk audit trail
-     */
-    function getEmissionDocuments(uint32 period, address user) 
-        external view returns (string memory docIPFS, string memory reportIPFS) 
-    {
+    function getEmissionDocuments(uint32 period, address user) external view returns (string memory, string memory) {
         return (emissionDocumentIPFS[period][user], verificationReportIPFS[period][user]);
     }
 }

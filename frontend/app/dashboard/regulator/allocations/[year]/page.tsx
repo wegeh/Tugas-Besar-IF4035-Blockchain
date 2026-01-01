@@ -21,8 +21,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import { Loader2, ArrowLeft, CheckCircle2, Lock, ShieldCheck } from "lucide-react"
+import { Loader2, ArrowLeft, CheckCircle2, Lock, ShieldCheck, AlertTriangle, Users } from "lucide-react"
 import Link from "next/link"
+import { formatUnits } from "ethers"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -54,6 +55,18 @@ export default function AllocationManagementPage() {
     const [processing, setProcessing] = useState(false)
     const [lifecycleLoading, setLifecycleLoading] = useState(false)
 
+    // Compliance State
+    interface ComplianceData {
+        companyName: string
+        walletAddress: string
+        emission: string
+        surrendered: string
+        debt: string
+        status: number  // 0=NO_DATA, 1=PENDING, 2=COMPLIANT, 3=NON_COMPLIANT
+    }
+    const [complianceData, setComplianceData] = useState<ComplianceData[]>([])
+    const [markingNonCompliant, setMarkingNonCompliant] = useState(false)
+
     useEffect(() => {
         loadData()
     }, [year, refreshKey])
@@ -79,6 +92,58 @@ export default function AllocationManagementPage() {
                     case "AUDIT": setStatus(PeriodStatus.AUDIT); break;
                     case "ENDED": setStatus(PeriodStatus.ENDED); break;
                     default: setStatus(PeriodStatus.ACTIVE);
+                }
+            }
+
+            // Load compliance data for ALL companies
+            if (addr) {
+                try {
+                    const signer = await getSigner()
+                    const ptbaeContract = getPtbaeContract(signer, addr)
+
+                    // Fetch all companies to check compliance for everyone
+                    const { getAllCompanies } = await import("@/app/actions/allocation")
+                    const allCompanies = await getAllCompanies()
+
+                    const compData: (ComplianceData | null)[] = await Promise.all(
+                        allCompanies.map(async (company) => {
+                            if (!company.walletAddress) return null
+
+                            // getCompliance returns: (period, balance, paid, emission, remaining, status)
+                            try {
+                                const info = await ptbaeContract.getCompliance(company.walletAddress)
+                                const emission = info[3]
+                                const paid = info[2]
+                                const remaining = info[4]
+                                const cs = Number(info[5])
+                                return {
+                                    companyName: company.companyName || "Unknown",
+                                    walletAddress: company.walletAddress,
+                                    emission: formatUnits(emission, 18),
+                                    surrendered: formatUnits(paid, 18),
+                                    debt: formatUnits(remaining, 18),
+                                    status: cs
+                                }
+                            } catch (e) {
+                                console.warn(`Failed to fetch compliance for ${company.companyName}`, e)
+                                // Return fallback data instead of null to debug persistence
+                                return {
+                                    companyName: company.companyName || "Unknown",
+                                    walletAddress: company.walletAddress,
+                                    emission: "0",
+                                    surrendered: "0",
+                                    debt: "0",
+                                    status: 0 // Waiting/Unknown
+                                }
+                            }
+                        })
+                    )
+
+                    // Show ALL companies regardless of emission status
+                    const validData = compData.filter((c): c is ComplianceData => c !== null)
+                    setComplianceData(validData)
+                } catch (err) {
+                    console.error("Error loading compliance data:", err)
                 }
             }
         } catch (error) {
@@ -183,6 +248,40 @@ export default function AllocationManagementPage() {
         }
     }
 
+    async function handleMarkNonCompliant() {
+        if (!tokenAddress) return
+        setMarkingNonCompliant(true)
+        try {
+            const signer = await getSigner()
+            const contract = getPtbaeContract(signer, tokenAddress)
+
+            // Get all users with emission > paid (non-compliant candidates)
+            const nonCompliantAddresses = complianceData
+                .filter(c => c.status !== 2 && parseFloat(c.emission) > parseFloat(c.surrendered))
+                .map(c => c.walletAddress)
+
+            if (nonCompliantAddresses.length === 0) {
+                toast.info("No non-compliant users found")
+                return
+            }
+
+            const data = contract.interface.encodeFunctionData("markNonCompliant", [nonCompliantAddresses])
+            toast.info("Signing 'Mark Non-Compliant' request...")
+            const { request, signature } = await createMetaTx(signer, forwarderAddress, tokenAddress, data)
+            toast.info("Relaying transaction...")
+            const txResult = await sendMetaTx(request, signature)
+            console.log("[MarkNonCompliant] Tx Hash:", txResult.txHash)
+
+            toast.success(`Marked ${nonCompliantAddresses.length} users as Non-Compliant`)
+            setRefreshKey(prev => prev + 1)
+        } catch (error: any) {
+            console.error("Mark Non-Compliant Error:", error)
+            toast.error("Failed to mark non-compliant: " + (error.message || "Unknown error"))
+        } finally {
+            setMarkingNonCompliant(false)
+        }
+    }
+
     async function handleAllocate() {
         if (!amount || selectedIds.size === 0) {
             toast.error("Please select companies and enter an amount")
@@ -248,7 +347,7 @@ export default function AllocationManagementPage() {
                     {isActive && (
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="outline" className="border-yellow-600 text-yellow-700 hover:bg-yellow-50">
+                                <Button variant="outline" className="border-yellow-600 text-yellow-500 hover:bg-yellow-600/20 hover:text-yellow-400">
                                     <ShieldCheck className="mr-2 h-4 w-4" /> Start Audit Phase
                                 </Button>
                             </AlertDialogTrigger>
@@ -301,6 +400,7 @@ export default function AllocationManagementPage() {
                 <TabsList>
                     <TabsTrigger value="pending">Pending Allocation ({unallocated.length})</TabsTrigger>
                     <TabsTrigger value="allocated">Allocated History ({allocated.length})</TabsTrigger>
+
                 </TabsList>
 
                 {/* Pending Tab */}

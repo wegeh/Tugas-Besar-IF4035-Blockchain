@@ -18,8 +18,8 @@ const defaultPtbaeAddress = (addresses as any).PTBAEAllowanceToken?.address || p
 export const forwarderAddress = (addresses as any).Forwarder?.address || ""
 export const oracleAddress = (addresses as any).MRVOracle?.address || ""
 export const submissionAddress = (addresses as any).EmissionSubmission?.address || ""
+export const idrsAddress = (addresses as any).IDRStable?.address || ""
 export const registryAddress = (addresses as any).GreenProjectRegistry?.address || ""
-export const idrcAddress = (addresses as any).IDRStable?.address || ""
 export const exchangeAddress = (addresses as any).CarbonExchange?.address || ""
 export const DEBUG_FACTORY_ADDRESS = factoryAddress
 
@@ -141,8 +141,8 @@ export function getOracleContract(providerOrSigner: Provider | Signer): Contract
 }
 
 export function getIdrcContract(providerOrSigner: Provider | Signer): Contract {
-  if (!idrcAddress) throw new Error("IDRStable contract address not set")
-  return new Contract(idrcAddress, idrcAbi.abi, providerOrSigner)
+  if (!idrsAddress) throw new Error("IDRStable contract address not set")
+  return new Contract(idrsAddress, idrcAbi.abi, providerOrSigner)
 }
 
 export function getExchangeContract(providerOrSigner: Provider | Signer): Contract {
@@ -378,7 +378,8 @@ export enum PeriodStatus {
 export enum ComplianceStatus {
   NO_DATA = 0,
   PENDING = 1,
-  COMPLIANT = 2
+  COMPLIANT = 2,
+  NON_COMPLIANT = 3
 }
 
 export interface ComplianceInfo {
@@ -673,4 +674,21 @@ export async function getAllGreenProjects(): Promise<{ user: string, data: Proje
     console.error("Error fetching all projects", error)
   }
   return allProjects.sort((a, b) => b.data.submittedAt - a.data.submittedAt)
+}
+
+// --- IDRS Helpers ---
+export function getIdrsContract(providerOrSigner: Provider | Signer) {
+  return new Contract(idrsAddress, idrcAbi.abi, providerOrSigner)
+}
+
+export async function checkIDRSApproval(owner: string, spender: string, amount: bigint) {
+  const provider = getReadOnlyProvider()
+  const contract = getIdrsContract(provider)
+  try {
+    const allowance = await contract.allowance(owner, spender)
+    return BigInt(allowance) >= amount
+  } catch (error) {
+    console.error("Error checking IDRS approval:", error)
+    return false
+  }
 }

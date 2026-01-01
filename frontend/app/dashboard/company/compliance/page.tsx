@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { Loader2, CheckCircle, Clock, Info, AlertTriangle, History, Leaf } from "lucide-react"
 import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
-import { getPtbaeContract, getSigner, forwarderAddress, getPTBAEBalanceForPeriod, getComplianceInfo, ComplianceStatus, type ComplianceInfo, getTotalSPEBalance, checkSPEApproval, getSpeContract } from "@/lib/contracts"
+import { getPtbaeContract, getSigner, forwarderAddress, getPTBAEBalanceForPeriod, getComplianceInfo, ComplianceStatus, type ComplianceInfo, getTotalSPEBalance, checkSPEApproval, getSpeContract, getIdrsContract, checkIDRSApproval } from "@/lib/contracts"
 import { getCompliancePeriods } from "@/app/actions/period-actions"
 import { formatUnits, parseUnits } from "ethers"
 import {
@@ -51,14 +51,25 @@ interface PeriodAllocation {
 
 interface PeriodCompliance {
     year: number
+    tokenAddress: string
     verifiedEmission: string
     surrendered: string
     debt: string
-    status: ComplianceStatus
+    priorDebt: string // Debt from previous period
+    status: number
+    balance: string
 }
 
 interface SPEToken {
     tokenId: string
+    balance: string
+    selected: boolean
+    amountToUse: string
+}
+
+interface OlderPeriodPTBAE {
+    year: number
+    tokenAddress: string
     balance: string
     selected: boolean
     amountToUse: string
@@ -73,10 +84,23 @@ export default function CompliancePage() {
 
     // SPE Offsetting State
     const [speTokens, setSpeTokens] = useState<SPEToken[]>([])
-    const [totalSpeBalance, setTotalSpeBalance] = useState<string>("0") // Total SPE balance in wei
+    const [totalSpeBalance, setTotalSpeBalance] = useState<string>("0")
     const [showOffsetDialog, setShowOffsetDialog] = useState(false)
     const [selectedPeriod, setSelectedPeriod] = useState<PeriodAllocation | null>(null)
     const [offsetLoading, setOffsetLoading] = useState(false)
+
+    // Older PTBAE Periods State (for cross-period burn)
+    const [olderPeriods, setOlderPeriods] = useState<OlderPeriodPTBAE[]>([])
+    const [shortage, setShortage] = useState<bigint>(BigInt(0))
+
+    // IDRS & Carbon Price State
+    const [idrsBalance, setIdrsBalance] = useState<string>("0")
+    const [idrsPayAmount, setIdrsPayAmount] = useState<string>("")
+    const [carbonPrice, setCarbonPrice] = useState<{ rate: string, timestamp: number, signature: string } | null>(null)
+    const [priceLoading, setPriceLoading] = useState(false)
+
+    // Prior Debt State (from previous period)
+    const [priorDebt, setPriorDebt] = useState<bigint>(BigInt(0))
 
     // Fetch All Data
     useEffect(() => {
@@ -104,12 +128,28 @@ export default function CompliancePage() {
                 for (const period of allocations) {
                     const info = await getComplianceInfo(period.year, address)
                     if (info) {
+                        // Fetch Prior Debt
+                        let priorDebt = "0"
+                        if (period.year > 2024) { // Assuming 2024 is start, or just check > min year
+                            try {
+                                const prevInfo = await getComplianceInfo(period.year - 1, address)
+                                if (prevInfo) {
+                                    priorDebt = (BigInt(prevInfo.debt) / BigInt(10 ** 18)).toString()
+                                }
+                            } catch (e) {
+                                console.warn("No prior period info found", e)
+                            }
+                        }
+
                         infoMap.set(period.year, {
                             year: period.year,
+                            tokenAddress: period.tokenAddress || "",
                             verifiedEmission: (BigInt(info.verifiedEmission) / BigInt(10 ** 18)).toString(),
                             surrendered: (BigInt(info.surrendered) / BigInt(10 ** 18)).toString(),
                             debt: (BigInt(info.debt) / BigInt(10 ** 18)).toString(),
-                            status: info.status
+                            priorDebt: priorDebt,
+                            status: Number(info.status),
+                            balance: "0"
                         })
                     }
                 }
@@ -126,6 +166,11 @@ export default function CompliancePage() {
                 }))
                 setSpeTokens(tokens)
 
+                // 4. Fetch IDRS Balance
+                const idrsContract = getIdrsContract(await getSigner())
+                const idrsBalance = await idrsContract.balanceOf(address)
+                setIdrsBalance(idrsBalance.toString())
+
             } catch (error) {
                 console.error("Error fetching data:", error)
             } finally {
@@ -135,12 +180,96 @@ export default function CompliancePage() {
         fetchData()
     }, [address, refreshKey])
 
-    // Open Offset Dialog
-    const openOffsetDialog = (period: PeriodAllocation) => {
-        setSelectedPeriod(period)
-        // Reset SPE token selections
-        setSpeTokens(prev => prev.map(t => ({ ...t, selected: false, amountToUse: "0" })))
-        setShowOffsetDialog(true)
+    // Open Offset Dialog - Calculate shortage and prepare older periods
+    const openOffsetDialog = async (period: PeriodAllocation) => {
+        setOffsetLoading(true)
+        try {
+            setSelectedPeriod(period)
+            // Reset SPE token selections
+            setSpeTokens(prev => prev.map(t => ({ ...t, selected: false, amountToUse: "0" })))
+
+            // Fetch Prior Debt from previous period (if exists)
+            let priorDebtVal = BigInt(0)
+            if (period.year > 2024) { // Assuming 2024 is start
+                try {
+                    const signer = await getSigner()
+                    // Get previous year's period token
+                    const prevPeriod = periodAllocations.find(p => p.year === period.year - 1)
+                    if (prevPeriod && prevPeriod.tokenAddress) {
+                        const prevContract = getPtbaeContract(signer, prevPeriod.tokenAddress)
+                        const debtInfo = await prevContract.getDebtInfo(address)
+                        if (debtInfo.debt > 0) {
+                            priorDebtVal = BigInt(debtInfo.debt.toString())
+                        }
+                    }
+                } catch (e) {
+                    console.log("No prior debt or previous period not found")
+                }
+            }
+            setPriorDebt(priorDebtVal)
+
+            // Calculate shortage (tagihan + priorDebt - current period balance)
+            const info = complianceInfo.get(period.year)
+            const tagihan = info ? parseUnits(info.verifiedEmission, 18) : BigInt(0)
+            const currentBalance = BigInt(period.balance)
+            const totalObligation = tagihan + priorDebtVal
+
+            // Shortage is how much MORE we need
+            const shortageAmount = totalObligation > currentBalance ? totalObligation - currentBalance : BigInt(0)
+            setShortage(shortageAmount)
+
+            // Prepare older periods for selection (years < target, with balance > 0)
+            const older = periodAllocations
+                .filter(p => p.year < period.year && BigInt(p.balance) > 0)
+                .sort((a, b) => a.year - b.year) // Oldest first
+                .map(p => ({
+                    year: p.year,
+                    tokenAddress: p.tokenAddress,
+                    balance: p.balance,
+                    selected: false,
+                    amountToUse: "0"
+                }))
+            setOlderPeriods(older)
+
+            // Reset form
+            setIdrsPayAmount("")
+
+            // Fetch Carbon Price
+            fetchCarbonPrice()
+
+            setShowOffsetDialog(true)
+        } catch (error) {
+            console.error(error)
+            toast.error("Failed to prepare offset data")
+        } finally {
+            setOffsetLoading(false)
+        }
+    }
+
+    async function fetchCarbonPrice() {
+        setPriceLoading(true)
+        try {
+            // Using absolute URL for server-side or relative for client-side proxy? 
+            // Since oracle service is on port 3001 and strictly separate, we might need a Next.js API route to proxy or call directly if CORS allows.
+            // Assuming oracle service CORS allows localhost:3000
+            // But browser can't hit container name 'oracle-service'. 
+            // In dev (localhost), use localhost:3001. In prod, use env var.
+            const oracleUrl = process.env.NEXT_PUBLIC_ORACLE_API_URL || "http://localhost:3001"
+            const res = await fetch(`${oracleUrl}/carbon-price`)
+            const data = await res.json()
+            if (data.rate) {
+                setCarbonPrice({
+                    rate: data.rate,
+                    timestamp: data.timestamp,
+                    signature: data.signature
+                })
+            }
+        } catch (e) {
+            console.error("Failed to fetch carbon price", e)
+            toast.error("Could not fetch carbon price. IDRS payment disabled.")
+        } finally {
+            setPriceLoading(false)
+        }
     }
 
     // Toggle SPE token selection
@@ -178,6 +307,64 @@ export default function CompliancePage() {
             }, BigInt(0))
     }
 
+    // Calculate total offset from IDRS payment (tonInput * rate = IDRS needed)
+    const calculateIdrsAmount = (): bigint => {
+        if (!idrsPayAmount || !carbonPrice) return BigInt(0)
+        try {
+            const tonWei = parseUnits(idrsPayAmount, 18)
+            const rateWei = BigInt(carbonPrice.rate)
+            // Convert Ton to IDRS amount: ton * rate
+            return (tonWei * rateWei) / BigInt(1e18)
+        } catch {
+            return BigInt(0)
+        }
+    }
+
+    // Calculate equivalent Ton from idrsPayAmount (for display purposes)
+    const calculateIdrsOffset = (): bigint => {
+        if (!idrsPayAmount) return BigInt(0)
+        try {
+            return parseUnits(idrsPayAmount, 18)
+        } catch {
+            return BigInt(0)
+        }
+    }
+
+    // Toggle Older PTBAE Period selection
+    const toggleOlderPeriod = (year: number) => {
+        setOlderPeriods(prev => prev.map(p => {
+            if (p.year === year) {
+                const newSelected = !p.selected
+                return {
+                    ...p,
+                    selected: newSelected,
+                    amountToUse: newSelected ? formatUnits(p.balance, 18) : "0"
+                }
+            }
+            return p
+        }))
+    }
+
+    // Update Older PTBAE Period amount
+    const updateOlderPeriodAmount = (year: number, amount: string) => {
+        setOlderPeriods(prev => prev.map(p =>
+            p.year === year ? { ...p, amountToUse: amount } : p
+        ))
+    }
+
+    // Calculate total from selected older periods
+    const calculateOlderPeriodsTotal = (): bigint => {
+        return olderPeriods
+            .filter(p => p.selected && parseFloat(p.amountToUse) > 0)
+            .reduce((sum, p) => {
+                try {
+                    return sum + parseUnits(p.amountToUse, 18)
+                } catch {
+                    return sum
+                }
+            }, BigInt(0))
+    }
+
     // Handle Surrender with Offset
     const handleSurrenderWithOffset = async () => {
         if (!selectedPeriod || !address) return
@@ -193,15 +380,15 @@ export default function CompliancePage() {
             const signer = await getSigner()
             const ptbaeContract = getPtbaeContract(signer, selectedPeriod.tokenAddress)
             const speContract = getSpeContract(signer)
+            const idrsContract = getIdrsContract(signer)
             const ptbaeAddress = await ptbaeContract.getAddress()
+            const idrsAddress = await idrsContract.getAddress()
 
-            // Prepare SPE token arrays
-            const selectedSPE = speTokens.filter(t => t.selected && parseFloat(t.amountToUse) > 0)
-            const speIds = selectedSPE.map(t => BigInt(t.tokenId))
-            const speAmounts = selectedSPE.map(t => parseUnits(t.amountToUse, 18))
+            // Get selected SPE tokens for approval check
+            const selectedSPEForApproval = speTokens.filter(t => t.selected && parseFloat(t.amountToUse) > 0)
 
             // If using SPE offset, check and request approval first
-            if (speIds.length > 0) {
+            if (selectedSPEForApproval.length > 0) {
                 // Check if PTBAEAllowanceToken is approved to transfer user's SPE tokens
                 const isApproved = await checkSPEApproval(address, ptbaeAddress)
 
@@ -223,52 +410,153 @@ export default function CompliancePage() {
                     toast.info("Menunggu konfirmasi approval...", { description: "Hash: " + approvalResult.txHash.slice(0, 10) + "..." })
                     await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2s for nonce to update
 
-                    toast.success("Approval Berhasil!")
+                    toast.success("Approval SPE Berhasil!")
                 }
             }
 
-            // Now proceed with surrender
-            let data: string
-            let description: string
+            // If using IDRS, check and request approval
+            const idrsAmt = calculateIdrsAmount()
+            if (idrsAmt > 0) {
+                const isApproved = await checkIDRSApproval(address, ptbaeAddress, idrsAmt)
+                if (!isApproved) {
+                    toast.info("Meminta approval IDRS...", { description: "Anda perlu menyetujui transfer IDRS token" })
 
-            if (speIds.length > 0) {
-                // Use surrenderWithOffset
-                data = ptbaeContract.interface.encodeFunctionData("surrenderWithOffset", [speIds, speAmounts])
-                const totalOffset = formatUnits(calculateTotalOffset(), 18)
-                description = `Offset ${totalOffset} Ton dengan SPE, sisa dengan PTBAE...`
-            } else {
-                // Use regular surrender
-                data = ptbaeContract.interface.encodeFunctionData("surrender", [])
-                description = `Membayar tagihan ${info.verifiedEmission} Ton dengan PTBAE...`
+                    const approvalData = idrsContract.interface.encodeFunctionData("approve", [ptbaeAddress, idrsAmt])
+                    const { request: approvalReq, signature: approvalSig } = await createMetaTx(
+                        signer, forwarderAddress, idrsAddress, approvalData
+                    )
+
+                    toast.info("Processing Approval...", { description: "Mengirim transaksi approval IDRS..." })
+                    const approvalResult = await sendMetaTx(approvalReq, approvalSig)
+
+                    toast.info("Menunggu konfirmasi approval IDRS...", { description: "Hash: " + approvalResult.txHash.slice(0, 10) + "..." })
+                    await new Promise(resolve => setTimeout(resolve, 2000))
+
+                    toast.success("Approval IDRS Berhasil!")
+                }
             }
 
+            // Hybrid Surrender Logic:
+            // 1. Target period PTBAE burns (from current period)
+            // 2. SPE offset (if selected)
+            // 3. Older PTBAE burns (if selected)
+            // 4. IDRS Payment
+
+            // NOTE: Prior Debt is now fetched and displayed.
+            // The contract surrenderHybrid will automatically add prior debt to totalTagihan.
+            // Here we verify frontend has enough coverage including priorDebt.
+
+            const tagihan = parseUnits(info.verifiedEmission, 18)
+            const totalTagihan = tagihan + priorDebt  // Include prior debt in total
+            const targetBalance = BigInt(selectedPeriod.balance)
+            const speOffset = calculateTotalOffset()
+            const olderTotal = calculateOlderPeriodsTotal()
+            const idrsOffset = calculateIdrsOffset()
+
+            // Calculate: how much from target period, SPE, older, IDRS
+            let remaining = totalTagihan
+
+            // Priority: Target -> SPE -> Older -> IDRS ??
+            // User said "kombinasi". Usually standard compliance logic:
+            // 1. Offsets (SPE) & Credits (Older)
+            // 2. Platform Currency (IDRS)
+            // 3. Current Allowance
+
+            // But our code does:
+            // 1. Burn From Older (User Action)
+            // 2. SurrenderHybrid calls contract:
+            //    -> Adds SPE
+            //    -> Adds IDRS
+            //    -> Remainder from Current Balance
+
+            // So we just need to ensure user has enough total coverage.
+
+            const totalAvailable = targetBalance + speOffset + olderTotal + idrsOffset
+
+            if (totalAvailable < totalTagihan) {
+                // Warning only? Or block?
+                // Depending on strictness. Let's block if explicitly short on visible tagihan.
+                throw new Error(`Total coverage (${formatUnits(totalAvailable, 18)}) less than Total Obligation (${formatUnits(totalTagihan, 18)})`)
+            }
+
+            // Execute in order:
+            // Step A: Burn from older periods first (if any)
+            const selectedOlder = olderPeriods.filter(p => p.selected && parseFloat(p.amountToUse) > 0)
+            let burnedFromOlder = BigInt(0)
+
+            if (selectedOlder.length > 0) {
+                toast.info("Step 1/2: Burning from older periods...")
+                for (const p of selectedOlder) {
+                    const amt = parseUnits(p.amountToUse, 18)
+                    const contract = getPtbaeContract(signer, p.tokenAddress)
+                    const data = contract.interface.encodeFunctionData("burnForCompliance", [address, amt, selectedPeriod.year])
+                    const to = await contract.getAddress()
+                    const { request, signature } = await createMetaTx(signer, forwarderAddress, to, data)
+                    await sendMetaTx(request, signature)
+                    burnedFromOlder += amt
+                }
+            }
+
+            // Step B: surrenderHybrid on target period (handles SPE + IDRS + target PTBAE + Prior Debt)
+            toast.info("Step 2/2: Finalizing Hybrid Surrender...")
+
+            // Prepare data for surrenderHybrid
+            const selectedSPE = speTokens.filter(t => t.selected && parseFloat(t.amountToUse) > 0)
+            const speIds = selectedSPE.map(t => BigInt(t.tokenId))
+            const speAmounts = selectedSPE.map(t => parseUnits(t.amountToUse, 18))
+
+            const rate = carbonPrice ? BigInt(carbonPrice.rate) : BigInt(0)
+            const timestamp = carbonPrice ? BigInt(carbonPrice.timestamp) : BigInt(0)
+            const signature = carbonPrice ? carbonPrice.signature : "0x"
+
+            const data = ptbaeContract.interface.encodeFunctionData("surrenderHybrid", [
+                speIds,
+                speAmounts,
+                burnedFromOlder,
+                idrsAmt,
+                rate,
+                timestamp,
+                signature
+            ])
+
+            toast.info("Signing Surrender Request...", { description: "Finalizing compliance..." })
             const to = await ptbaeContract.getAddress()
+            const { request, signature: metaSig } = await createMetaTx(signer, forwarderAddress, to, data)
 
-            toast.info("Signing Surrender Request", { description })
-            const { request, signature } = await createMetaTx(signer, forwarderAddress, to, data)
+            toast.info("Relaying Transaction...", { description: "Sending to blockchain..." })
+            const txResult = await sendMetaTx(request, metaSig)
 
-            toast.info("Processing", { description: "Mengirim transaksi surrender..." })
-            const result = await sendMetaTx(request, signature)
-
-            toast.success("Sukses!", {
-                description: `Tagihan terbayar. Tx: ${result.txHash.slice(0, 10)}...`
-            })
+            console.log("Tx Hash:", txResult.txHash)
+            toast.success("Compliance Surrender (Hybrid) Successful!")
 
             setShowOffsetDialog(false)
             setRefreshKey(p => p + 1)
         } catch (error: any) {
             console.error("Surrender Error:", error)
             const msg = error.message?.toLowerCase() || ""
-            if (msg.includes("rejected")) {
-                toast.error("Transaksi dibatalkan.")
-            } else if (msg.includes("insufficient")) {
-                toast.error("Saldo tidak cukup untuk membayar tagihan.")
-            } else if (msg.includes("already surrendered")) {
-                toast.error("Anda sudah membayar tagihan periode ini.")
-            } else if (msg.includes("vintage")) {
-                toast.error("SPE token vintage year tidak valid untuk periode ini.")
+
+            // Parse specific Smart Contract errors
+            if (msg.includes("rejected") || msg.includes("user rejected")) {
+                toast.error("Transaksi Dibatalkan", { description: "Anda membatalkan transaksi di wallet." })
+            } else if (msg.includes("insufficientptbaebalance") || msg.includes("insufficient")) {
+                const info = complianceInfo.get(selectedPeriod?.year || 0)
+                const tagihan = info?.verifiedEmission || "?"
+                const balance = formatTon(selectedPeriod?.balance || "0")
+                toast.error("Saldo PTBAE Tidak Cukup", {
+                    description: `Tagihan: ${tagihan} Ton, Saldo Anda: ${balance} Ton. Silakan beli PTBAE di Trading atau gunakan SPE untuk offset.`
+                })
+            } else if (msg.includes("alreadysurrendered") || msg.includes("already surrendered")) {
+                toast.error("Sudah Dibayar", { description: "Anda sudah menyelesaikan kewajiban untuk periode ini." })
+            } else if (msg.includes("vintagetoonew") || msg.includes("vintage")) {
+                toast.error("SPE Token Tidak Valid", { description: "Tahun vintage SPE token tidak boleh lebih baru dari periode compliance." })
+            } else if (msg.includes("surrenderonlyinauditphase") || msg.includes("audit")) {
+                toast.error("Periode Belum Masuk Audit", { description: "Pembayaran hanya dapat dilakukan saat periode dalam fase AUDIT." })
+            } else if (msg.includes("noverifiedemissiondata") || msg.includes("emission")) {
+                toast.error("Belum Ada Tagihan", { description: "Laporan emisi Anda belum diverifikasi oleh Oracle." })
+            } else if (msg.includes("execution reverted")) {
+                toast.error("Transaksi Gagal", { description: "Kemungkinan saldo tidak cukup atau ada persyaratan yang tidak terpenuhi. Periksa balance PTBAE Anda." })
             } else {
-                toast.error("Gagal: " + error.message)
+                toast.error("Terjadi Kesalahan", { description: error.message || "Silakan coba lagi." })
             }
         } finally {
             setOffsetLoading(false)
@@ -313,6 +601,18 @@ export default function CompliancePage() {
                         const info = complianceInfo.get(period.year)
                         const hasSPETokens = speTokens.length > 0
 
+                        // Calculate Gross Obligation (Standard Emission OR Flat Penalty 1000)
+                        let grossPeriodObligation = 0
+                        if (info) {
+                            // If Non-Compliant (3) but 0 Emission & >0 Debt => Penalty Case
+                            if (info.status === 3 && parseFloat(info.verifiedEmission) === 0 && parseFloat(info.debt) > 0) {
+                                grossPeriodObligation = 1000
+                            } else {
+                                grossPeriodObligation = parseFloat(info.verifiedEmission)
+                            }
+                        }
+                        const totalObligation = info ? grossPeriodObligation + parseFloat(info.priorDebt || "0") : 0
+
                         return (
                             <Card key={period.year}>
                                 <CardHeader className="pb-2">
@@ -340,8 +640,23 @@ export default function CompliancePage() {
                                             <p className="text-xl font-bold text-green-600">{info?.surrendered || '0'} Ton</p>
                                         </div>
                                         <div>
-                                            <p className="text-sm text-muted-foreground">Remaining Debt</p>
-                                            <p className="text-xl font-bold text-red-600">{info?.debt || '0'} Ton</p>
+                                            <p className="text-sm text-muted-foreground">Kewajiban Periode</p>
+                                            <p className="text-xl font-bold">{grossPeriodObligation.toFixed(2)} Ton</p>
+                                        </div>
+                                        {info && parseFloat(info.priorDebt) > 0 && (
+                                            <div>
+                                                <p className="text-sm text-muted-foreground">Prior Period Debt</p>
+                                                <p className="text-xl font-bold text-orange-600">{info.priorDebt} Ton</p>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <p className="text-sm text-muted-foreground">Total Kewajiban</p>
+                                            <p className={`text-2xl font-bold ${info && info.status === ComplianceStatus.COMPLIANT
+                                                ? "text-green-600"
+                                                : "text-primary"
+                                                }`}>
+                                                {totalObligation.toFixed(2)} Ton
+                                            </p>
                                         </div>
                                         <div>
                                             <p className="text-sm text-muted-foreground">PTBAE Balance</p>
@@ -439,52 +754,121 @@ export default function CompliancePage() {
                 </Card>
             )}
 
-            {/* SPE Offset Dialog */}
+            {/* Surrender Dialog */}
             <Dialog open={showOffsetDialog} onOpenChange={setShowOffsetDialog}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>Bayar Tagihan - Period {selectedPeriod?.year}</DialogTitle>
                         <DialogDescription>
-                            Gunakan SPE-GRK token untuk offset, sisa tagihan akan dibayar dengan PTBAE.
+                            PTBAE periode ini digunakan dulu. Jika kurang, pilih dari SPE-GRK atau periode lama.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-4">
                         {/* Summary */}
-                        <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 bg-muted rounded-lg text-center">
                             <div>
-                                <p className="text-sm text-muted-foreground">Tagihan</p>
-                                <p className="text-lg font-bold">
+                                <p className="text-xs text-muted-foreground">Tagihan {selectedPeriod?.year}</p>
+                                <p className="text-base font-bold">
                                     {complianceInfo.get(selectedPeriod?.year || 0)?.verifiedEmission || '0'} Ton
                                 </p>
                             </div>
+                            {priorDebt > 0 && (
+                                <div>
+                                    <p className="text-xs text-red-500">Utang Periode Lalu</p>
+                                    <p className="text-base font-bold text-red-600">
+                                        +{formatUnits(priorDebt, 18)} Ton
+                                    </p>
+                                </div>
+                            )}
                             <div>
-                                <p className="text-sm text-muted-foreground">SPE Offset</p>
-                                <p className="text-lg font-bold text-green-600">
+                                <p className="text-xs text-muted-foreground">Saldo {selectedPeriod?.year}</p>
+                                <p className="text-base font-bold text-blue-600">
+                                    {formatTon(selectedPeriod?.balance || "0")} Ton
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-muted-foreground">SPE Offset</p>
+                                <p className="text-base font-bold text-green-600">
                                     {formatUnits(calculateTotalOffset(), 18)} Ton
                                 </p>
                             </div>
                             <div>
-                                <p className="text-sm text-muted-foreground">Bayar PTBAE</p>
-                                <p className="text-lg font-bold text-orange-600">
-                                    {getRemainingDebt()} Ton
+                                <p className="text-xs text-muted-foreground">Periode Lama</p>
+                                <p className="text-base font-bold text-orange-600">
+                                    {formatUnits(calculateOlderPeriodsTotal(), 18)} Ton
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-muted-foreground">Kurang</p>
+                                <p className={`text-base font-bold ${shortage > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                    {formatUnits(shortage, 18)} Ton
                                 </p>
                             </div>
                         </div>
 
-                        {/* SPE Token Selection */}
-                        {speTokens.length > 0 ? (
+                        {/* Shortage Warning */}
+                        {shortage > 0 && (
+                            <Alert variant="destructive">
+                                <AlertTriangle className="h-4 w-4" />
+                                <AlertTitle>Saldo Periode {selectedPeriod?.year} Tidak Cukup</AlertTitle>
+                                <AlertDescription>
+                                    Anda perlu {formatUnits(shortage, 18)} Ton tambahan. Pilih dari periode lama di bawah.
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        {/* Older Periods Selection - Only show if shortage exists */}
+                        {shortage > 0 && olderPeriods.length > 0 && (
                             <div className="space-y-2">
-                                <Label>Pilih SPE Token untuk Offset</Label>
+                                <Label>Pilih PTBAE dari Periode Lama</Label>
                                 <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                                    {olderPeriods.map(period => (
+                                        <div key={period.year} className="p-3 flex items-center gap-4">
+                                            <Checkbox
+                                                checked={period.selected}
+                                                onCheckedChange={() => toggleOlderPeriod(period.year)}
+                                                className="border-gray-400 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                                            />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-medium">Periode {period.year}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Saldo: {formatTon(period.balance)} Ton
+                                                </p>
+                                            </div>
+                                            {period.selected && (
+                                                <div className="w-32">
+                                                    <Input
+                                                        type="number"
+                                                        value={period.amountToUse}
+                                                        onChange={(e) => updateOlderPeriodAmount(period.year, e.target.value)}
+                                                        max={formatUnits(period.balance, 18)}
+                                                        min="0"
+                                                        step="0.01"
+                                                        className="h-8 text-sm"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* SPE-GRK Token Selection */}
+                        {speTokens.length > 0 && (
+                            <div className="space-y-2">
+                                <Label>Offset dengan SPE-GRK Token</Label>
+                                <div className="border rounded-lg divide-y max-h-48 overflow-y-auto">
                                     {speTokens.map(token => (
                                         <div key={token.tokenId} className="p-3 flex items-center gap-4">
                                             <Checkbox
                                                 checked={token.selected}
                                                 onCheckedChange={() => toggleSPEToken(token.tokenId)}
+                                                className="border-gray-400 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
                                             />
                                             <div className="flex-1">
-                                                <p className="text-sm font-medium">Token #{token.tokenId.slice(0, 10)}...</p>
+                                                <p className="text-sm font-medium">SPE #{token.tokenId.slice(0, 8)}...</p>
                                                 <p className="text-xs text-muted-foreground">
                                                     Balance: {formatUnits(token.balance, 18)} Ton
                                                 </p>
@@ -505,13 +889,67 @@ export default function CompliancePage() {
                                         </div>
                                     ))}
                                 </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Total SPE Offset: <span className="font-medium text-green-600">{formatUnits(calculateTotalOffset(), 18)} Ton</span>
+                                </p>
                             </div>
-                        ) : (
-                            <Alert>
-                                <Info className="h-4 w-4" />
-                                <AlertTitle>Tidak ada SPE Token</AlertTitle>
+                        )}
+
+                        {/* IDRS Payment Section */}
+                        <div className="space-y-2 p-3 border rounded-lg bg-slate-50 dark:bg-slate-900/50">
+                            <Label>Bayar Kekurangan dengan IDRS</Label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-xs text-muted-foreground mb-1">Rate Saat Ini</p>
+                                    {priceLoading ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <p className="font-mono text-sm">
+                                            1 Ton = {formatTon(carbonPrice?.rate || "0")} IDRS
+                                        </p>
+                                    )}
+                                </div>
+                                <div>
+                                    <p className="text-xs text-muted-foreground mb-1">Saldo IDRS Anda</p>
+                                    <p className="font-mono text-sm">{formatTon(idrsBalance)} IDRS</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="flex-1">
+                                    <Input
+                                        placeholder="0"
+                                        value={idrsPayAmount}
+                                        onChange={(e) => setIdrsPayAmount(e.target.value)}
+                                        type="number"
+                                    />
+                                </div>
+                                <div className="text-sm font-medium">Ton</div>
+                            </div>
+                            {calculateIdrsAmount() > 0 && (
+                                <p className="text-sm text-blue-600">
+                                    ≈ {formatTon(calculateIdrsAmount().toString())} IDRS Dibutuhkan
+                                </p>
+                            )}
+                        </div>
+
+                        {/* No older periods available */}
+                        {shortage > 0 && olderPeriods.length === 0 && speTokens.length === 0 && (
+                            <Alert variant="destructive">
+                                <AlertTriangle className="h-4 w-4" />
+                                <AlertTitle>Tidak Ada Sumber Tambahan</AlertTitle>
                                 <AlertDescription>
-                                    Anda tidak memiliki SPE-GRK token. Tagihan akan dibayar sepenuhnya dengan PTBAE.
+                                    Anda tidak memiliki PTBAE periode lama atau SPE-GRK token. Beli PTBAE di Trading.
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        {/* Sufficient balance message */}
+                        {shortage === BigInt(0) && (
+                            <Alert className="bg-green-50 border-green-200">
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                <AlertTitle className="text-green-800">Saldo Cukup</AlertTitle>
+                                <AlertDescription className="text-green-700">
+                                    Saldo PTBAE periode {selectedPeriod?.year} mencukupi untuk membayar tagihan.
                                 </AlertDescription>
                             </Alert>
                         )}

@@ -117,6 +117,10 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Market not found" }, { status: 404 })
         }
 
+        if (!market.isOpen) {
+            return NextResponse.json({ error: "Market is CLOSED. Trading is currently disabled." }, { status: 400 })
+        }
+
         if (market.expiresAt && new Date() > market.expiresAt) {
             return NextResponse.json({ error: "Market has expired" }, { status: 400 })
         }

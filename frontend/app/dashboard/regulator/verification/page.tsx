@@ -160,6 +160,9 @@ export default function VerificationPage() {
                                                 {(!compliance || compliance?.status === ComplianceStatus.NO_DATA) && (
                                                     <Badge variant="secondary">NO DATA</Badge>
                                                 )}
+                                                {compliance?.status === ComplianceStatus.NON_COMPLIANT && (
+                                                    <Badge variant="destructive">NON COMPLIANT</Badge>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     )

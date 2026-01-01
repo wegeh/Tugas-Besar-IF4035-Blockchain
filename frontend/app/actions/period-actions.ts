@@ -34,6 +34,19 @@ export async function startNewPeriod(year: number, tokenAddress: string) {
                 status: "ACTIVE"
             }
         })
+
+        // Auto-close PTBAE markets expired by 2-year rule
+        // Example: If opening 2026, close markets for < 2024 (2023, 2022...)
+        const thresholdYear = year - 2
+        await prisma.market.updateMany({
+            where: {
+                periodYear: { lt: thresholdYear },
+                marketType: "PTBAE",
+                isOpen: true
+            },
+            data: { isOpen: false }
+        })
+
         revalidatePath("/dashboard/regulator")
         return { success: true }
     } catch (error) {

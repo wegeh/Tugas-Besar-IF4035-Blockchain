@@ -55,10 +55,22 @@ async function main() {
   const docHash = hre.ethers.id("demo-mrv-doc")
   const attestationId = hre.ethers.id("demo-attestation-1")
 
-  // Call attestMRV on the Oracle contract
-  await (await oracle.attestMRV(attestationId, docHash, metaHash)).wait()
+  // Call attestProject on the Oracle contract (new robust function)
+  const expiryDuration = 0 // No expiry for demo
+  await (await oracle.attestProject(attestationId, INITIAL_SPE_AMOUNT, docHash, metaHash, expiryDuration)).wait()
 
-  // Issue on SPE contract (it calls oracle to verify)
+  // Grant CONSUMER_ROLE to SPE Token BEFORE issuing (required for consumeAttestation)
+  const CONSUMER_ROLE = await oracle.CONSUMER_ROLE()
+  await (await oracle.grantRole(CONSUMER_ROLE, speAddr)).wait()
+  console.log("Granted CONSUMER_ROLE to SPE Token")
+
+  // Grant OPERATOR_ROLE to Hardhat Account #0 (used by Oracle Service for event listening)
+  const OPERATOR_ROLE = await oracle.OPERATOR_ROLE()
+  const HARDHAT_ACCOUNT_0 = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+  await (await oracle.grantRole(OPERATOR_ROLE, HARDHAT_ACCOUNT_0)).wait()
+  console.log("Granted OPERATOR_ROLE to Hardhat Account #0 (Oracle Service)")
+
+  // Issue on SPE contract (it calls oracle to consume attestation)
   await (await spe.issueSPE(tokenId, deployer.address, INITIAL_SPE_AMOUNT, meta, attestationId)).wait()
   console.log(`Issued SPE tokenId ${tokenId} amount ${INITIAL_SPE_AMOUNT} to ${deployer.address}`)
 
@@ -91,6 +103,7 @@ async function main() {
   await (await ptbae.allocate(deployer.address, INITIAL_PTBAE_AMOUNT)).wait()
   console.log(`Allocated PTBAE amount ${INITIAL_PTBAE_AMOUNT} to ${deployer.address} for period ${INITIAL_PERIOD}`)
 
+
   // ===== Deploy EmissionSubmission =====
   const EmissionSubmission = await hre.ethers.getContractFactory("EmissionSubmission")
   const submission = await EmissionSubmission.deploy(
@@ -101,6 +114,11 @@ async function main() {
   await submission.waitForDeployment()
   const submissionAddr = await submission.getAddress()
   console.log("EmissionSubmission deployed:", submissionAddr)
+
+  // Grant REGULATOR_ROLE to Hardhat Account #0 on EmissionSubmission (for Oracle to call markVerified)
+  const SUBMISSION_REGULATOR_ROLE = await submission.REGULATOR_ROLE()
+  await (await submission.grantRole(SUBMISSION_REGULATOR_ROLE, HARDHAT_ACCOUNT_0)).wait()
+  console.log("Granted REGULATOR_ROLE to Hardhat Account #0 on EmissionSubmission (Oracle Service)")
 
   // ===== Deploy GreenProjectRegistry (New, Phase-Independent) =====
   const GreenProjectRegistry = await hre.ethers.getContractFactory("GreenProjectRegistry")
@@ -113,6 +131,11 @@ async function main() {
   const registryAddr = await registry.getAddress()
   console.log("GreenProjectRegistry deployed:", registryAddr)
 
+  // Grant REGULATOR_ROLE to Hardhat Account #0 on GreenProjectRegistry (for Oracle to call attestProject)
+  const REGISTRY_REGULATOR_ROLE = await registry.REGULATOR_ROLE()
+  await (await registry.grantRole(REGISTRY_REGULATOR_ROLE, HARDHAT_ACCOUNT_0)).wait()
+  console.log("Granted REGULATOR_ROLE to Hardhat Account #0 on GreenProjectRegistry (Oracle Service)")
+
   // ===== Deploy IDRStable (Dummy IDRC Token) =====
   const IDRStable = await hre.ethers.getContractFactory("IDRStable")
   const idrc = await IDRStable.deploy(
@@ -122,6 +145,19 @@ async function main() {
   await idrc.waitForDeployment()
   const idrcAddr = await idrc.getAddress()
   console.log("IDRStable (IDRC) deployed:", idrcAddr)
+
+  // ===== Configure PTBAE (Hybrid Compliance) =====
+  console.log("Configuring PTBAE for Hybrid Compliance...")
+
+  // 1. Configure Factory for future periods
+  await (await factory.setHybridConfig(deployer.address, HARDHAT_ACCOUNT_0, idrcAddr)).wait()
+  console.log("PTBAEFactory Configured: Treasury=deployer, IDRS=idrc, OracleSigner=Hardhat#0")
+
+  // 2. Configure Initial Period Token (since it was created before factory config)
+  await (await ptbae.setTreasury(deployer.address)).wait()
+  await (await ptbae.setIDRSToken(idrcAddr)).wait()
+  await (await ptbae.setOracleSigner(HARDHAT_ACCOUNT_0)).wait()
+  console.log("Initial PTBAE Token Configured")
 
   // ===== Deploy CarbonExchange =====
   const CarbonExchange = await hre.ethers.getContractFactory("CarbonExchange")
@@ -141,7 +177,7 @@ async function main() {
   console.log("Granted MATCHER_ROLE to deployer")
 
   // Also grant MATCHER_ROLE to Hardhat Account #0 (used by default scheduler)
-  const HARDHAT_ACCOUNT_0 = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+  // HARDHAT_ACCOUNT_0 was declared earlier for ORACLE_ROLE grant
   if (deployer.address.toLowerCase() !== HARDHAT_ACCOUNT_0.toLowerCase()) {
     await (await exchange.grantRole(MATCHER_ROLE, HARDHAT_ACCOUNT_0)).wait()
     console.log("Granted MATCHER_ROLE to Hardhat Account #0 (scheduler)")
@@ -151,6 +187,8 @@ async function main() {
     await (await deployer.sendTransaction({ to: HARDHAT_ACCOUNT_0, value: gasAmount })).wait()
     console.log("Funded Hardhat Account #0 with 10 ETH for gas")
   }
+
+  // Note: CONSUMER_ROLE already granted to SPE Token earlier in script
 
   // ===== Seed IDRC for demo accounts =====
   // Load company addresses from centralized config
