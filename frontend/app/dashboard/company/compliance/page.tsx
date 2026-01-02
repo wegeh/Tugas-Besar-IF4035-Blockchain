@@ -196,23 +196,13 @@ export default function CompliancePage() {
             // Reset SPE token selections
             setSpeTokens(prev => prev.map(t => ({ ...t, selected: false, amountToUse: "0" })))
 
-            // Fetch Prior Debt from previous period (if exists)
+            // Use accumulated Prior Debt from complianceInfo (Calculated recursively in fetch)
             let priorDebtVal = BigInt(0)
-            if (period.year > 2024) { // Assuming 2024 is start
-                try {
-                    const signer = await getSigner()
-                    // Get previous year's period token
-                    const prevPeriod = periodAllocations.find(p => p.year === period.year - 1)
-                    if (prevPeriod && prevPeriod.tokenAddress) {
-                        const prevContract = getPtbaeContract(signer, prevPeriod.tokenAddress)
-                        const debtInfo = await prevContract.getDebtInfo(address)
-                        if (debtInfo.debt > 0) {
-                            priorDebtVal = BigInt(debtInfo.debt.toString())
-                        }
-                    }
-                } catch (e) {
-                    console.log("No prior debt or previous period not found")
-                }
+            const infoLoaded = complianceInfo.get(period.year)
+            if (infoLoaded && infoLoaded.priorDebt) {
+                // infoLoaded.priorDebt is string representation "2000.0" (Aready formatted)
+                // We need BigInt (wei) for calculation
+                priorDebtVal = parseUnits(infoLoaded.priorDebt, 18)
             }
             setPriorDebt(priorDebtVal)
 

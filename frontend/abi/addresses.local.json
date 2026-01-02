@@ -2,35 +2,35 @@
   "network": "localhost",
   "rpc": "http://127.0.0.1:8545",
   "Forwarder": {
-    "address": "0x59454f5DF59f8425135647a8b4C57F1059150Cc2"
+    "address": "0xe23c549aC05e8584Cd006058eEDBFc3b46e45A36"
   },
   "MRVOracle": {
-    "address": "0x8c42196711B7D1661fE90370918A6D917eb034Ac"
+    "address": "0xf0dE7655F44dA33e55ED0DE1ce762d5A1F280200"
   },
   "SPEGRKToken": {
-    "address": "0x2e27ae6556a89ABF5116811f8C06949C003C3C0F",
+    "address": "0x25E147419adCeE243A1983788A80454103fa8DB1",
     "tokenId": 1,
-    "initialHolder": "0x45a48E8Af56547936A0CF68Bd0d45806f2d10ec0"
+    "initialHolder": "0xd7665e536Df7e4A656b9b8be2197Cdf37F939A59"
   },
   "PTBAEFactory": {
-    "address": "0xEfD7E05575e343BC319d1699c7f99AE24229f708",
+    "address": "0xfDE7B5c22016A39cacce56e43D4Def96Cc05364D",
     "initialPeriod": 1
   },
   "PTBAEAllowanceToken": {
-    "address": "0xFbFfD3104dd0604D0362C861cDBfe0Cbb4e4620e",
+    "address": "0x12b11d3FEad0A17b2173158Df4B063bd907c1dcF",
     "period": 1,
-    "initialHolder": "0x45a48E8Af56547936A0CF68Bd0d45806f2d10ec0"
+    "initialHolder": "0xd7665e536Df7e4A656b9b8be2197Cdf37F939A59"
   },
   "EmissionSubmission": {
-    "address": "0xDD0a2F1DA21356574D558Cebb5B5EEf4F2945a5c"
+    "address": "0xDa8E36f620A23F2C04b877B04F7AA3ED4A2a100E"
   },
   "GreenProjectRegistry": {
-    "address": "0x8DFF7d90EbEd12FcF590c7E04EACC319564816Df"
+    "address": "0x2D00dB9C6897164033443b0Ac0babA8b9abC5289"
   },
   "IDRStable": {
-    "address": "0xFc14a353d1a55341704bF05611345D9D7064eCdD"
+    "address": "0xed97B0fcFb25140f76Fd3C75B7e8c412d2873b1e"
   },
   "CarbonExchange": {
-    "address": "0x518a10b608470dDA9e1be5A76643B677C797593b"
+    "address": "0x1F6F08f36e9e93F30D30c12966A1B791C03d15Ec"
   }
 }
