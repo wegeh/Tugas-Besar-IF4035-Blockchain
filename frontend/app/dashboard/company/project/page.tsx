@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAccount } from "wagmi"
+import { useConnection } from "wagmi"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,7 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 
 export default function ProjectPage() {
-    const { address } = useAccount()
+    const { address } = useConnection()
     const [loading, setLoading] = useState(false)
     const [submissions, setSubmissions] = useState<ProjectData[]>([])
     const [loadingHistory, setLoadingHistory] = useState(false)

@@ -1,9 +1,10 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
-import { useAccount } from "wagmi"
+import { useState, useEffect, useMemo } from "react"
+import { useConnection } from "wagmi"
 import { useParams, useRouter } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,11 +23,16 @@ import {
     getIdrcContract,
     getSpeContract,
     getPtbaeContract,
-    getIdrcBalance,
-    getTotalSPEBalance,
     exchangeAddress
 } from "@/lib/contracts"
 import { getCompliancePeriods } from "@/app/actions/period-actions"
+import {
+    useAuctionData,
+    useMarketOrderbook,
+    useTradeHistory,
+    useMarketOrders,
+    useUserBalances
+} from "@/hooks"
 
 // --- INTERFACES ---
 interface OrderBookEntry {
@@ -104,49 +110,64 @@ function formatAmount(weiAmount: string): string {
 export default function MarketDetailPage() {
     const params = useParams()
     const router = useRouter()
-    const { address } = useAccount()
+    const queryClient = useQueryClient()
+    const { address } = useConnection()
     const marketKey = params.marketKey as string
 
-    // --- STATE ---
-    const [marketInfo, setMarketInfo] = useState<MarketInfo | null>(null)
-    const [speMeta, setSpeMeta] = useState<any>(null) // Added speMeta state
-    const [auctionWindow, setAuctionWindow] = useState<AuctionWindow | null>(null)
+    // Local timer state (still needed for UI countdown)
     const [timeRemaining, setTimeRemaining] = useState(0)
-
-    // Order Book & User Data
-    const [orderBook, setOrderBook] = useState<OrderBook>({ bids: [], asks: [] })
-    const [myOrders, setMyOrders] = useState<MyOrder[]>([])
-    const [trades, setTrades] = useState<any[]>([])
 
     // Form State
     const [orderSide, setOrderSide] = useState<"BID" | "ASK">("BID")
     const [orderPrice, setOrderPrice] = useState("")
     const [orderAmount, setOrderAmount] = useState("")
     const [submitting, setSubmitting] = useState(false)
-    const [refreshing, setRefreshing] = useState(false)
 
-    // Balances
-    const [idrcBalance, setIdrcBalance] = useState("0")
-    const [assetBalance, setAssetBalance] = useState("0")
+    // Adaptive polling: poll faster when near settlement
+    const isSettling = timeRemaining <= 5000
 
-    // --- EFFECT: Polling Data ---
+    // ====== React Query Hooks (Data Fetching with Adaptive Polling) ======
+    const {
+        data: auctionData,
+        isLoading: auctionLoading,
+        isFetching: refreshing
+    } = useAuctionData(marketKey, isSettling)
+
+    const { data: orderBookData } = useMarketOrderbook(
+        auctionData?.market?.marketType,
+        auctionData?.market?.tokenId,
+        auctionData?.market?.periodYear,
+        isSettling
+    )
+
+    const { data: tradesData } = useTradeHistory(marketKey)
+
+    const { data: myOrdersData } = useMarketOrders(address, marketKey, isSettling)
+
+    const { data: balancesData } = useUserBalances(
+        address,
+        auctionData?.market?.marketType,
+        auctionData?.market?.tokenId
+    )
+
+    // ====== Derived State from Hooks ======
+    const marketInfo = auctionData?.market ?? null
+    const speMeta = auctionData?.speMeta ?? null
+    const auctionWindow = auctionData?.currentWindow ?? null
+    const orderBook = orderBookData ?? { bids: [], asks: [] }
+    const trades = tradesData ?? []
+    const myOrders = myOrdersData ?? []
+    const idrcBalance = balancesData?.idrcBalance ?? "0"
+    const assetBalance = balancesData?.assetBalance ?? "0"
+
+    // Sync timer from server data
     useEffect(() => {
-        if (!marketKey) return
+        if (auctionData?.currentWindow?.timeRemainingMs !== undefined) {
+            setTimeRemaining(auctionData.currentWindow.timeRemainingMs)
+        }
+    }, [auctionData?.currentWindow?.timeRemainingMs])
 
-        // Initial load
-        loadMarketData()
-
-        // Adaptive Polling:
-        // If time is close to 0 (<= 5s), poll every 1s to catch window rotation.
-        // Otherwise poll every 4s to keep orderbook fresh.
-        const isSettling = timeRemaining <= 5000
-        const intervalMs = isSettling ? 1000 : 4000
-
-        const interval = setInterval(loadMarketData, intervalMs)
-        return () => clearInterval(interval)
-    }, [marketKey, address, timeRemaining <= 5000])
-
-    // --- TIMER ---
+    // Local countdown timer (decrements every second)
     useEffect(() => {
         if (timeRemaining <= 0) return
         const timer = setInterval(() => {
@@ -165,78 +186,15 @@ export default function MarketDetailPage() {
         return `${minutes}:${seconds.toString().padStart(2, '0')}`
     }
 
-    // --- DATA FETCHING ---
-    async function loadMarketData() {
-        setRefreshing(true)
-        try {
-            // Get Market Info
-            const auctionRes = await fetch(`/api/auction?marketKey=${marketKey}`)
-            if (!auctionRes.ok) throw new Error("Market not found")
-
-            const auctionData = await auctionRes.json()
-            setMarketInfo(auctionData.market)
-            setAuctionWindow(auctionData.currentWindow)
-            setTimeRemaining(auctionData.currentWindow?.timeRemainingMs || 0)
-
-            const mInfo = auctionData.market
-
-            // Fetch SPE Metadata
-            if (mInfo.marketType === "SPE" && mInfo.tokenId) {
-                try {
-                    const { getSPEUnit } = await import("@/lib/contracts")
-                    const meta = await getSPEUnit(mInfo.tokenId)
-                    if (meta) setSpeMeta(meta)
-                } catch (e) { console.warn("Failed to fetch SPE meta", e) }
-            }
-
-            // Order Book
-            const bookParams = new URLSearchParams()
-            bookParams.set("marketType", mInfo.marketType)
-            if (mInfo.marketType === "SPE") bookParams.set("tokenId", mInfo.tokenId)
-            else bookParams.set("periodYear", mInfo.periodYear)
-
-            const bookRes = await fetch(`/api/orderbook?${bookParams}`)
-            if (bookRes.ok) {
-                const bookData = await bookRes.json()
-                setOrderBook({ bids: bookData.bids || [], asks: bookData.asks || [] })
-            }
-
-            // Trade History
-            const tradesRes = await fetch(`/api/trades?marketKey=${marketKey}`)
-            if (tradesRes.ok) {
-                const tradesData = await tradesRes.json()
-                setTrades(tradesData.trades || [])
-            }
-
-            // User Data
-            if (address) {
-                const ordersRes = await fetch(`/api/orders?walletAddress=${address}&marketKey=${marketKey}`)
-                if (ordersRes.ok) {
-                    const ordersData = await ordersRes.json()
-                    setMyOrders(ordersData.orders || [])
-                }
-
-                const idrc = await getIdrcBalance(address)
-                setIdrcBalance(idrc)
-
-                if (mInfo.marketType === "SPE") {
-                    const speData = await getTotalSPEBalance(address)
-                    const token = speData.tokens.find((t: any) => t.tokenId.toString() === mInfo.tokenId.toString())
-                    setAssetBalance(token ? token.balance : "0")
-                } else if (mInfo.marketType === "PTBAE" && mInfo.tokenId) {
-                    const signer = await getSigner()
-                    const ptbae = await getPtbaeContract(signer, mInfo.tokenId)
-                    const bal = await ptbae.balanceOf(address)
-                    setAssetBalance(bal.toString())
-                }
-            }
-        } catch (error) {
-            console.error(error)
-            toast.error("Gagal memuat data pasar")
-        } finally {
-            setRefreshing(false)
-        }
+    // Manual refresh function (invalidates all queries)
+    function handleRefresh() {
+        queryClient.invalidateQueries({ queryKey: ["auction", marketKey] })
+        queryClient.invalidateQueries({ queryKey: ["orderbook"] })
+        queryClient.invalidateQueries({ queryKey: ["trades", marketKey] })
+        queryClient.invalidateQueries({ queryKey: ["orders"] })
+        queryClient.invalidateQueries({ queryKey: ["balances"] })
     }
+
 
     // --- ACTIONS ---
     async function handleCreateOrder() {
@@ -396,7 +354,7 @@ export default function MarketDetailPage() {
             toast.success("Order Berhasil Dibuat!")
             setOrderPrice("")
             setOrderAmount("")
-            loadMarketData()
+            handleRefresh()
 
         } catch (error: any) {
             console.error(error)
@@ -434,7 +392,7 @@ export default function MarketDetailPage() {
             const { request, signature } = await createMetaTx(signer, forwarderAddress, exchangeAddress, data)
             await sendMetaTx(request, signature)
             toast.success("Order Dibatalkan")
-            loadMarketData()
+            handleRefresh()
         } catch (e) {
             toast.error("Gagal Cancel")
         }
@@ -473,7 +431,7 @@ export default function MarketDetailPage() {
                         <span className="text-xs text-muted-foreground">Saldo {marketInfo.marketType} {marketInfo.marketType === "PTBAE" ? "(Ton)" : ""}</span>
                         <span className="font-bold text-lg">{formatAmount(assetBalance)}</span>
                     </Card>
-                    <Button variant="outline" size="icon" onClick={loadMarketData} disabled={refreshing}>
+                    <Button variant="outline" size="icon" onClick={handleRefresh} disabled={refreshing}>
                         <RefreshCw className={refreshing ? "animate-spin" : ""} />
                     </Button>
                 </div>

@@ -5,12 +5,12 @@ import Link from "next/link"
 import { Menu, X, Wallet, LogIn, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useSession, signOut } from "next-auth/react"
-import { useAccount, useDisconnect } from "wagmi"
+import { useConnection, useDisconnect } from "wagmi"
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const { data: session, status } = useSession()
-  const { address, isConnected } = useAccount()
+  const { address, isConnected } = useConnection()
   const { disconnect } = useDisconnect()
 
   const [mounted, setMounted] = useState(false)

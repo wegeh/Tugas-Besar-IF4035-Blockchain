@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
-import { useAccount } from "wagmi"
+import { useConnection } from "wagmi"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -31,7 +31,7 @@ interface PeriodAllocation {
 
 export default function CompanyDashboard() {
     const { data: session } = useSession()
-    const { address } = useAccount()
+    const { address } = useConnection()
 
     const [ptbaeBalance, setPtbaeBalance] = useState<string>("0")
     const [speBalance, setSpeBalance] = useState<string>("0")

@@ -158,8 +158,7 @@ contract PTBAEAllowanceToken is ERC20, AccessControl, ERC2771Context, ERC1155Hol
             if (amt > 0) {
                 (SPEGRKToken.UnitMeta memory meta, , , , , ) = speToken.getUnit(id);
                 require(meta.vintageYear <= period, "Vintage too new");
-                // Enforce 2-Year Validity Limit
-                require(period - meta.vintageYear <= 2, "Token Expired (>2y)");
+                // SPE tokens are valid forever - no expiry check
 
                 speToken.safeTransferFrom(user, address(this), id, amt, "");
                 speToken.retireSPE(id, amt);

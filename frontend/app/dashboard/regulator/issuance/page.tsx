@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAccount } from "wagmi"
+import { useConnection } from "wagmi"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -22,7 +22,7 @@ import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
 import { forwarderAddress } from "@/lib/contracts"
 
 export default function IssuancePage() {
-    const { address } = useAccount()
+    const { address } = useConnection()
     const [loadingRows, setLoadingRows] = useState<Record<number, boolean>>({})
     const [issuedRows, setIssuedRows] = useState<Record<number, boolean>>({}) // Track already issued
     const [submissions, setSubmissions] = useState<{ user: string, data: ProjectData }[]>([])

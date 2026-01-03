@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useConnect, useAccount, useSignMessage, useDisconnect } from "wagmi"
+import { useConnect, useConnection, useSignMessage, useDisconnect } from "wagmi"
 import { signIn } from "next-auth/react"
 import { SiweMessage } from "siwe"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,7 @@ export function SiweLoginCard() {
     const [error, setError] = useState<string | null>(null)
 
     const { connect } = useConnect()
-    const { address, isConnected } = useAccount()
+    const { address, isConnected } = useConnection()
     const { signMessageAsync } = useSignMessage()
     const { disconnect } = useDisconnect()
 

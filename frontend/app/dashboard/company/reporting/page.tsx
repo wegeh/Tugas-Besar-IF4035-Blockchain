@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAccount } from "wagmi"
+import { useConnection } from "wagmi"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,7 +29,7 @@ interface PeriodAllocation {
 }
 
 export default function ReportingPage() {
-    const { address } = useAccount()
+    const { address } = useConnection()
     const [loading, setLoading] = useState(false)
     const [reportPeriod, setReportPeriod] = useState("")
     const [reportFile, setReportFile] = useState<File | null>(null)

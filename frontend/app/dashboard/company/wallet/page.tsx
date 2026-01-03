@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAccount } from "wagmi"
+import { useConnection } from "wagmi"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -30,7 +30,7 @@ function formatBalance(weiValue: string): string {
 }
 
 export default function WalletPage() {
-    const { address } = useAccount()
+    const { address } = useConnection()
 
     const [idrcBalance, setIdrcBalance] = useState("0")
     const [nextFaucetClaim, setNextFaucetClaim] = useState(0)

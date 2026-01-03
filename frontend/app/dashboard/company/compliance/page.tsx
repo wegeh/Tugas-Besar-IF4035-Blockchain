@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAccount } from "wagmi"
+import { useConnection } from "wagmi"
+import { useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -12,9 +13,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { Loader2, CheckCircle, Clock, Info, AlertTriangle, History, Leaf } from "lucide-react"
 import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
-import { getPtbaeContract, getSigner, forwarderAddress, getPTBAEBalanceForPeriod, getComplianceInfo, ComplianceStatus, type ComplianceInfo, getTotalSPEBalance, checkSPEApproval, getSpeContract, getIdrsContract, checkIDRSApproval } from "@/lib/contracts"
-import { getCompliancePeriods } from "@/app/actions/period-actions"
+import { getPtbaeContract, getSigner, forwarderAddress, checkSPEApproval, getSpeContract, getIdrsContract, checkIDRSApproval, ComplianceStatus } from "@/lib/contracts"
 import { formatUnits, parseUnits } from "ethers"
+// React Query Hooks
+import { useComplianceData, useCompliancePeriods, getGrossPeriodObligation } from "@/hooks"
+import { useSPETokens } from "@/hooks/use-spe-tokens"
+import { useCarbonPrice } from "@/hooks/use-carbon-price"
 import {
     Table,
     TableBody,
@@ -76,125 +80,122 @@ interface OlderPeriodPTBAE {
 }
 
 export default function CompliancePage() {
-    const { address } = useAccount()
-    const [periodAllocations, setPeriodAllocations] = useState<PeriodAllocation[]>([])
-    const [complianceInfo, setComplianceInfo] = useState<Map<number, PeriodCompliance>>(new Map())
-    const [loading, setLoading] = useState(false)
-    const [refreshKey, setRefreshKey] = useState(0)
+    const { address } = useConnection()
+    const queryClient = useQueryClient()
 
-    // SPE Offsetting State
-    const [speTokens, setSpeTokens] = useState<SPEToken[]>([])
-    const [totalSpeBalance, setTotalSpeBalance] = useState<string>("0")
+    // ====== React Query Hooks (Data Fetching) ======
+    const { data: periods, isLoading: periodsLoading } = useCompliancePeriods()
+    const { data: complianceData, isLoading: complianceLoading, refetch: refetchCompliance } = useComplianceData()
+    const { data: speData, isLoading: speLoading } = useSPETokens()
+    const { data: carbonPriceData, isLoading: priceLoading } = useCarbonPrice()
+
+    // Derived loading state
+    const loading = periodsLoading || complianceLoading || speLoading
+
+    // ====== Local UI State (Dialog, Selections) ======
+    const [speTokenSelections, setSpeTokenSelections] = useState<SPEToken[]>([])
     const [showOffsetDialog, setShowOffsetDialog] = useState(false)
-    const [selectedPeriod, setSelectedPeriod] = useState<PeriodAllocation | null>(null)
+    const [selectedPeriodYear, setSelectedPeriodYear] = useState<number | null>(null)
     const [offsetLoading, setOffsetLoading] = useState(false)
 
     // Older PTBAE Periods State (for cross-period burn)
     const [olderPeriods, setOlderPeriods] = useState<OlderPeriodPTBAE[]>([])
     const [shortage, setShortage] = useState<bigint>(BigInt(0))
 
-    // IDRS & Carbon Price State
+    // IDRS State
     const [idrsBalance, setIdrsBalance] = useState<string>("0")
     const [idrsPayAmount, setIdrsPayAmount] = useState<string>("")
-    const [carbonPrice, setCarbonPrice] = useState<{ rate: string, timestamp: number, signature: string } | null>(null)
-    const [priceLoading, setPriceLoading] = useState(false)
 
-    // Prior Debt State (from previous period)
+    // Prior Debt State (from previous period) - Used in Dialog
     const [priorDebt, setPriorDebt] = useState<bigint>(BigInt(0))
 
-    // Fetch All Data
+    // ====== Derived State from Hooks (Backward Compatibility) ======
+    // These derived values allow existing UI code to work without major changes
+    const periodAllocations: PeriodAllocation[] = (periods || []).map(p => ({
+        year: p.year,
+        balance: complianceData?.get(p.year)?.balance || "0",
+        status: p.status,
+        tokenAddress: p.tokenAddress
+    }))
+
+    const complianceInfo: Map<number, PeriodCompliance> = (() => {
+        const map = new Map<number, PeriodCompliance>()
+        if (complianceData) {
+            complianceData.forEach((data, year) => {
+                map.set(year, {
+                    year: data.year,
+                    tokenAddress: data.tokenAddress,
+                    verifiedEmission: data.verifiedEmission,
+                    surrendered: data.surrendered,
+                    debt: data.localDebt,
+                    priorDebt: data.priorDebt,
+                    status: data.status,
+                    balance: data.balance
+                })
+            })
+        }
+        return map
+    })()
+
+    // SPE tokens with selection state (from hook data + local selection)
+    const speTokens: SPEToken[] = (speData?.tokens || []).map(t => {
+        const existing = speTokenSelections.find(s => s.tokenId === t.tokenId)
+        return {
+            tokenId: t.tokenId,
+            balance: t.balance,
+            selected: existing?.selected || false,
+            amountToUse: existing?.amountToUse || "0"
+        }
+    })
+
+    const totalSpeBalance = speData?.total || "0"
+    const carbonPrice = carbonPriceData
+
+    // Selected period object (for dialog)
+    const selectedPeriod = selectedPeriodYear
+        ? periodAllocations.find(p => p.year === selectedPeriodYear) || null
+        : null
+
+    // Sync speTokenSelections when speData tokens change
     useEffect(() => {
-        async function fetchData() {
-            if (!address) return
-            setLoading(true)
-            try {
-                // 1. Get Periods & Balances
-                const periods = await getCompliancePeriods()
-                const allocations: PeriodAllocation[] = await Promise.all(
-                    periods.map(async (period) => {
-                        const balance = await getPTBAEBalanceForPeriod(address, period.year)
-                        return {
-                            year: period.year,
-                            balance,
-                            status: period.status,
-                            tokenAddress: period.tokenAddress
-                        }
-                    })
-                )
-                setPeriodAllocations(allocations)
+        if (!speData?.tokens) return
 
-                // 2. Get Compliance Info & Calculate Cumulative Prior Debt
-                const infoMap = new Map<number, PeriodCompliance>()
-                const tempRawInfos = new Map<number, any>()
-
-                // Phase A: Fetch all raw data from contracts
-                for (const period of allocations) {
-                    const info = await getComplianceInfo(period.year, address)
-                    if (info) tempRawInfos.set(period.year, info)
-                }
-
-                // Phase B: Calculate Accumulation (Oldest to Newest)
-                // This ensures debt from 2024 carries to 2025, and (2024+2025) carries to 2026
-                const sortedYears = allocations.map(p => p.year).sort((a, b) => a - b)
-                let runningCumulativeDebt = BigInt(0)
-
-                for (const year of sortedYears) {
-                    const info = tempRawInfos.get(year)
-                    const allocation = allocations.find(p => p.year === year)
-                    if (!info || !allocation) continue;
-
-                    const currentLocalDebt = BigInt(info.debt)
-                    // Prior Debt for THIS year is the Running Sum of previous years
-                    const priorDebtValue = runningCumulativeDebt
-
-                    infoMap.set(year, {
-                        year: year,
-                        tokenAddress: allocation.tokenAddress || "",
-                        verifiedEmission: (BigInt(info.verifiedEmission) / BigInt(10 ** 18)).toString(),
-                        surrendered: (BigInt(info.surrendered) / BigInt(10 ** 18)).toString(),
-                        debt: (currentLocalDebt / BigInt(10 ** 18)).toString(), // Local Net Debt
-                        priorDebt: (priorDebtValue / BigInt(10 ** 18)).toString(), // Cumulative Prior
-                        status: Number(info.status),
-                        balance: "0"
-                    })
-
-                    // Add local debt to cumulative for the NEXT year
-                    runningCumulativeDebt += currentLocalDebt
-                }
-                setComplianceInfo(infoMap)
-
-                // 3. Fetch SPE Tokens
-                const speData = await getTotalSPEBalance(address)
-                setTotalSpeBalance(speData.total)
-                const tokens: SPEToken[] = speData.tokens.map(t => ({
+        setSpeTokenSelections(prev => {
+            // Build new array from speData tokens, preserving existing selections
+            return speData.tokens.map(t => {
+                const existing = prev.find(p => p.tokenId === t.tokenId)
+                return {
                     tokenId: t.tokenId,
                     balance: t.balance,
-                    selected: false,
-                    amountToUse: "0"
-                }))
-                setSpeTokens(tokens)
+                    selected: existing?.selected || false,
+                    amountToUse: existing?.amountToUse || "0"
+                }
+            })
+        })
+    }, [speData?.tokens])
 
-                // 4. Fetch IDRS Balance
+    // Fetch IDRS Balance when dialog opens
+    useEffect(() => {
+        async function fetchIdrs() {
+            if (!address || !showOffsetDialog) return
+            try {
                 const idrsContract = getIdrsContract(await getSigner())
-                const idrsBalance = await idrsContract.balanceOf(address)
-                setIdrsBalance(idrsBalance.toString())
-
-            } catch (error) {
-                console.error("Error fetching data:", error)
-            } finally {
-                setLoading(false)
+                const balance = await idrsContract.balanceOf(address)
+                setIdrsBalance(balance.toString())
+            } catch (e) {
+                console.error("Failed to fetch IDRS balance", e)
             }
         }
-        fetchData()
-    }, [address, refreshKey])
+        fetchIdrs()
+    }, [address, showOffsetDialog])
 
     // Open Offset Dialog - Calculate shortage and prepare older periods
     const openOffsetDialog = async (period: PeriodAllocation) => {
         setOffsetLoading(true)
         try {
-            setSelectedPeriod(period)
+            setSelectedPeriodYear(period.year)
             // Reset SPE token selections
-            setSpeTokens(prev => prev.map(t => ({ ...t, selected: false, amountToUse: "0" })))
+            setSpeTokenSelections(prev => prev.map(t => ({ ...t, selected: false, amountToUse: "0" })))
 
             // Use accumulated Prior Debt from complianceInfo (Calculated recursively in fetch)
             let priorDebtVal = BigInt(0)
@@ -232,8 +233,7 @@ export default function CompliancePage() {
             // Reset form
             setIdrsPayAmount("")
 
-            // Fetch Carbon Price
-            fetchCarbonPrice()
+            // Carbon Price is now fetched via useCarbonPrice hook (auto-loaded)
 
             setShowOffsetDialog(true)
         } catch (error) {
@@ -244,41 +244,18 @@ export default function CompliancePage() {
         }
     }
 
-    async function fetchCarbonPrice() {
-        setPriceLoading(true)
-        try {
-            // Using absolute URL for server-side or relative for client-side proxy? 
-            // Since oracle service is on port 3001 and strictly separate, we might need a Next.js API route to proxy or call directly if CORS allows.
-            // Assuming oracle service CORS allows localhost:3000
-            // But browser can't hit container name 'oracle-service'. 
-            // In dev (localhost), use localhost:3001. In prod, use env var.
-            const oracleUrl = process.env.NEXT_PUBLIC_ORACLE_API_URL || "http://localhost:3001"
-            const res = await fetch(`${oracleUrl}/carbon-price`)
-            const data = await res.json()
-            if (data.rate) {
-                setCarbonPrice({
-                    rate: data.rate,
-                    timestamp: data.timestamp,
-                    signature: data.signature
-                })
-            }
-        } catch (e) {
-            console.error("Failed to fetch carbon price", e)
-            toast.error("Could not fetch carbon price. IDRS payment disabled.")
-        } finally {
-            setPriceLoading(false)
-        }
-    }
+    // Carbon price is now fetched via useCarbonPrice hook - removed fetchCarbonPrice function
 
     // Toggle SPE token selection
     const toggleSPEToken = (tokenId: string) => {
-        setSpeTokens(prev => prev.map(t => {
+        setSpeTokenSelections(prev => prev.map(t => {
             if (t.tokenId === tokenId) {
+                const existing = speTokens.find(s => s.tokenId === tokenId)
                 const newSelected = !t.selected
                 return {
                     ...t,
                     selected: newSelected,
-                    amountToUse: newSelected ? formatUnits(t.balance, 18) : "0"
+                    amountToUse: newSelected && existing ? formatUnits(existing.balance, 18) : "0"
                 }
             }
             return t
@@ -287,7 +264,7 @@ export default function CompliancePage() {
 
     // Update SPE amount to use
     const updateSPEAmount = (tokenId: string, amount: string) => {
-        setSpeTokens(prev => prev.map(t =>
+        setSpeTokenSelections(prev => prev.map(t =>
             t.tokenId === tokenId ? { ...t, amountToUse: amount } : t
         ))
     }
@@ -404,9 +381,18 @@ export default function CompliancePage() {
                     toast.info("Processing Approval...", { description: "Mengirim transaksi approval..." })
                     const approvalResult = await sendMetaTx(approvalReq, approvalSig)
 
-                    // Wait for approval tx to be fully mined and propagated
+                    // Wait for approval tx to be FULLY MINED (not just submitted)
                     toast.info("Menunggu konfirmasi approval...", { description: "Hash: " + approvalResult.txHash.slice(0, 10) + "..." })
-                    await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2s for nonce to update
+                    const receipt = await signer.provider?.waitForTransaction(approvalResult.txHash, 1) // Wait for 1 confirmation
+                    if (receipt?.status !== 1) {
+                        throw new Error("SPE Approval transaction failed on-chain")
+                    }
+
+                    // Verify approval is now set
+                    const verifyApproval = await checkSPEApproval(address, ptbaeAddress)
+                    if (!verifyApproval) {
+                        throw new Error("SPE Approval verification failed - try again")
+                    }
 
                     toast.success("Approval SPE Berhasil!")
                 }
@@ -427,8 +413,12 @@ export default function CompliancePage() {
                     toast.info("Processing Approval...", { description: "Mengirim transaksi approval IDRS..." })
                     const approvalResult = await sendMetaTx(approvalReq, approvalSig)
 
+                    // Wait for IDRS approval tx to be FULLY MINED
                     toast.info("Menunggu konfirmasi approval IDRS...", { description: "Hash: " + approvalResult.txHash.slice(0, 10) + "..." })
-                    await new Promise(resolve => setTimeout(resolve, 2000))
+                    const receipt = await signer.provider?.waitForTransaction(approvalResult.txHash, 1)
+                    if (receipt?.status !== 1) {
+                        throw new Error("IDRS Approval transaction failed on-chain")
+                    }
 
                     toast.success("Approval IDRS Berhasil!")
                 }
@@ -517,6 +507,39 @@ export default function CompliancePage() {
                 signature
             ])
 
+            // Static call to validate before actual tx
+            toast.info("Validating transaction...")
+            try {
+                await ptbaeContract.surrenderHybrid.staticCall(
+                    speIds, speAmounts, burnedFromOlder, idrsAmt, rate, timestamp, signature
+                )
+                console.log("Static call validation passed")
+            } catch (staticErr: any) {
+                console.error("Static call failed:", staticErr)
+                // Extract error message from static call
+                let errorMsg = staticErr.message || "Unknown contract error"
+                if (errorMsg.includes("Not audit")) {
+                    throw new Error("Periode belum dalam fase AUDIT. Surrender hanya bisa dilakukan saat AUDIT.")
+                } else if (errorMsg.includes("No emission")) {
+                    throw new Error("Tidak ada data emisi terverifikasi untuk akun ini.")
+                } else if (errorMsg.includes("Already done")) {
+                    throw new Error("Anda sudah melakukan surrender untuk periode ini.")
+                } else if (errorMsg.includes("Vintage too new")) {
+                    throw new Error("SPE token vintage year lebih baru dari periode compliance.")
+                } else if (errorMsg.includes("Token Expired")) {
+                    throw new Error("SPE token sudah expired (>2 tahun dari vintage). Cek pengaturan kontrak.")
+                } else if (errorMsg.includes("Price expired")) {
+                    throw new Error("Carbon price sudah expired (>10 menit). Refresh halaman dan coba lagi.")
+                } else if (errorMsg.includes("Inv sig") || errorMsg.includes("Invalid signature")) {
+                    throw new Error("Signature carbon price tidak valid. Hubungi administrator.")
+                } else if (errorMsg.includes("Insufficient PTBAE")) {
+                    throw new Error("Saldo PTBAE tidak cukup untuk menutup kewajiban.")
+                } else if (errorMsg.includes("Trf fail")) {
+                    throw new Error("Transfer IDRS gagal. Pastikan approval dan saldo cukup.")
+                }
+                throw new Error(`Contract validation failed: ${errorMsg}`)
+            }
+
             toast.info("Signing Surrender Request...", { description: "Finalizing compliance..." })
             const to = await ptbaeContract.getAddress()
             const { request, signature: metaSig } = await createMetaTx(signer, forwarderAddress, to, data)
@@ -528,7 +551,7 @@ export default function CompliancePage() {
             toast.success("Compliance Surrender (Hybrid) Successful!")
 
             setShowOffsetDialog(false)
-            setRefreshKey(p => p + 1)
+            refetchCompliance()
         } catch (error: any) {
             console.error("Surrender Error:", error)
             const msg = error.message?.toLowerCase() || ""
