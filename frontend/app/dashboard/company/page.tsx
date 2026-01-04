@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { formatUnits } from "ethers"
 import { Loader2, Leaf, Factory, RefreshCw, Calendar } from "lucide-react"
 import { getTotalSPEBalance, getPTBAEBalanceForPeriod } from "@/lib/contracts"
-import { getCompliancePeriods } from "@/app/actions/period-actions"
+import { useCompliancePeriods } from "@/hooks"
 
 // Format balance from wei (18 decimals) to Ton CO2e
 function formatTon(weiValue: string): string {
@@ -32,22 +32,19 @@ interface PeriodAllocation {
 export default function CompanyDashboard() {
     const { data: session } = useSession()
     const { address } = useConnection()
+    const { data: periods = [], refetch: refetchPeriods } = useCompliancePeriods()
 
     const [ptbaeBalance, setPtbaeBalance] = useState<string>("0")
     const [speBalance, setSpeBalance] = useState<string>("0")
     const [speTokenCount, setSpeTokenCount] = useState<number>(0)
     const [periodAllocations, setPeriodAllocations] = useState<PeriodAllocation[]>([])
     const [loading, setLoading] = useState(false)
-    const [refreshKey, setRefreshKey] = useState(0)
 
     useEffect(() => {
-        async function fetchData() {
-            if (!address) return
+        async function fetchBalances() {
+            if (!address || periods.length === 0) return
             setLoading(true)
             try {
-                // Get periods from Database
-                const periods = await getCompliancePeriods()
-
                 // Get PTBAE balance for each period and calculate total
                 let totalPtbae = BigInt(0)
                 const allocations: PeriodAllocation[] = await Promise.all(
@@ -75,8 +72,8 @@ export default function CompanyDashboard() {
                 setLoading(false)
             }
         }
-        fetchData()
-    }, [address, refreshKey])
+        fetchBalances()
+    }, [address, periods])
 
     if (!session) return <div>Access Denied</div>
 
@@ -88,7 +85,7 @@ export default function CompanyDashboard() {
                     <h1 className="text-3xl font-bold">Company Dashboard</h1>
                     <p className="text-muted-foreground">{session.user?.companyName}</p>
                 </div>
-                <Button variant="outline" size="icon" onClick={() => setRefreshKey(p => p + 1)} disabled={loading}>
+                <Button variant="outline" size="icon" onClick={() => refetchPeriods()} disabled={loading}>
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
             </div>

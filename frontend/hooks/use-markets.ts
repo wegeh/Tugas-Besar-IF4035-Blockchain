@@ -10,6 +10,7 @@ export interface Market {
     tokenId: string | null
     basePrice: string
     isOpen: boolean
+    isExpired?: boolean
     expiresAt: string | null
     createdAt: string
 }
@@ -27,7 +28,9 @@ export function useMarkets() {
                 throw new Error("Failed to fetch markets")
             }
 
-            return res.json()
+            const data = await res.json()
+            // API returns { markets: [...] } not array directly
+            return data.markets || []
         },
         staleTime: 30 * 1000,
         refetchOnWindowFocus: false

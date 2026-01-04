@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { getUnallocatedCompanies, getAllocatedCompanies, recordAllocation } from "@/app/actions/allocation"
-import { getPeriodTokenAddress, updatePeriodStatus, getCompliancePeriods } from "@/app/actions/period-actions"
 import { useContracts } from "@/lib/use-contracts"
 import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
 import { forwarderAddress, getPtbaeContract, PeriodStatus } from "@/lib/contracts"
@@ -74,17 +72,25 @@ export default function AllocationManagementPage() {
     async function loadData() {
         setLoading(true)
         try {
-            const allPeriods = await getCompliancePeriods()
-            const currentPeriod = allPeriods.find(p => p.year === year)
+            // Fetch periods and current period status from API
+            const periodsRes = await fetch("/api/periods")
+            const allPeriods = periodsRes.ok ? await periodsRes.json() : []
+            const currentPeriod = allPeriods.find((p: any) => p.year === year)
 
-            const [unallocData, allocData, addr] = await Promise.all([
-                getUnallocatedCompanies(year),
-                getAllocatedCompanies(year),
-                getPeriodTokenAddress(year)
+            // Fetch companies and allocations from API
+            const [unallocRes, allocRes, tokenRes] = await Promise.all([
+                fetch(`/api/companies?allocated=false&year=${year}`),
+                fetch(`/api/allocations?year=${year}`),
+                fetch(`/api/periods/${year}/token`)
             ])
+
+            const unallocData = unallocRes.ok ? await unallocRes.json() : []
+            const allocData = allocRes.ok ? await allocRes.json() : []
+            const tokenData = tokenRes.ok ? await tokenRes.json() : { tokenAddress: "" }
+
             setUnallocated(unallocData)
             setAllocated(allocData)
-            setTokenAddress(addr || "")
+            setTokenAddress(tokenData.tokenAddress || "")
 
             if (currentPeriod) {
                 switch (currentPeriod.status) {
@@ -96,17 +102,17 @@ export default function AllocationManagementPage() {
             }
 
             // Load compliance data for ALL companies
-            if (addr) {
+            if (tokenData.tokenAddress) {
                 try {
                     const signer = await getSigner()
-                    const ptbaeContract = getPtbaeContract(signer, addr)
+                    const ptbaeContract = getPtbaeContract(signer, tokenData.tokenAddress)
 
-                    // Fetch all companies to check compliance for everyone
-                    const { getAllCompanies } = await import("@/app/actions/allocation")
-                    const allCompanies = await getAllCompanies()
+                    // Fetch all companies from API
+                    const allCompaniesRes = await fetch("/api/companies")
+                    const allCompanies = allCompaniesRes.ok ? await allCompaniesRes.json() : []
 
                     const compData: (ComplianceData | null)[] = await Promise.all(
-                        allCompanies.map(async (company) => {
+                        allCompanies.map(async (company: { walletAddress: string; companyName?: string }) => {
                             if (!company.walletAddress) return null
 
                             // getCompliance returns: (period, balance, paid, emission, remaining, status)
@@ -183,9 +189,13 @@ export default function AllocationManagementPage() {
                 console.log("[Audit] Tx Hash:", txResult.txHash)
             }
 
-            // Update DB status
+            // Update DB status via API
             console.log("[Audit] Updating period status in database...")
-            await updatePeriodStatus(year, "AUDIT")
+            await fetch("/api/periods", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ year, status: "AUDIT" })
+            })
             console.log("[Audit] Database updated successfully")
 
             toast.success("Period is now in Audit Mode")
@@ -212,9 +222,13 @@ export default function AllocationManagementPage() {
             const txResult = await sendMetaTx(request, signature)
             console.log("[Finalize] Tx Hash:", txResult.txHash)
 
-            // Update DB status
+            // Update DB status via API
             console.log("[Finalize] Updating period status in database...")
-            await updatePeriodStatus(year, "ENDED")
+            await fetch("/api/periods", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ year, status: "ENDED" })
+            })
             console.log("[Finalize] Database updated successfully")
 
             // AUTOMATICALLY CREATE MARKET
@@ -306,7 +320,17 @@ export default function AllocationManagementPage() {
             toast.info("Sending to Relayer...")
             const txResult = await sendMetaTx(request, signature)
 
-            await recordAllocation(year, addresses, amount, txResult.txHash)
+            // Record allocation via API
+            await fetch("/api/allocations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    periodYear: year,
+                    companyWalletAddresses: addresses,
+                    amount,
+                    txHash: txResult.txHash
+                })
+            })
 
             toast.success("Allocation Successful!")
             setRefreshKey(p => p + 1)

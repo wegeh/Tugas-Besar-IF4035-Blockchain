@@ -25,7 +25,6 @@ import {
     getPtbaeContract,
     exchangeAddress
 } from "@/lib/contracts"
-import { getCompliancePeriods } from "@/app/actions/period-actions"
 import {
     useAuctionData,
     useMarketOrderbook,
@@ -269,8 +268,9 @@ export default function MarketDetailPage() {
                 }
             } else {
                 // PTBAE
-                const periods = await getCompliancePeriods()
-                const p = periods.find(p => p.year === marketInfo.periodYear)
+                const periodsRes = await fetch("/api/periods")
+                const periods: Array<{ year: number; tokenAddress: string; status: string }> = periodsRes.ok ? await periodsRes.json() : []
+                const p = periods.find(pd => pd.year === marketInfo.periodYear)
                 if (!p) throw new Error("Period Data Not Found")
 
                 if (orderSide === "ASK") {
@@ -300,11 +300,12 @@ export default function MarketDetailPage() {
                     BigInt(marketInfo.tokenId!), side, priceWei, amountWei
                 ])
             } else {
-                const periods = await getCompliancePeriods()
-                const p = periods.find(p => p.year === marketInfo.periodYear)
+                const periodsRes2 = await fetch("/api/periods")
+                const periods2: Array<{ year: number; tokenAddress: string; status: string }> = periodsRes2.ok ? await periodsRes2.json() : []
+                const p2 = periods2.find(pd => pd.year === marketInfo.periodYear)
                 const side = orderSide === "BID" ? 0 : 1
                 data = exchange.interface.encodeFunctionData("createPTBAEOrder", [
-                    p!.tokenAddress, marketInfo.periodYear, side, priceWei, amountWei
+                    p2!.tokenAddress, marketInfo.periodYear, side, priceWei, amountWei
                 ])
             }
 
@@ -330,8 +331,9 @@ export default function MarketDetailPage() {
             } catch (e) { console.warn("Failed to parse log", e) }
 
             // Record to DB
-            const periods = await getCompliancePeriods()
-            const p = marketInfo.marketType === "PTBAE" ? periods.find(p => p.year === marketInfo.periodYear) : null
+            const periodsRes3 = await fetch("/api/periods")
+            const periods3: Array<{ year: number; tokenAddress: string; status: string }> = periodsRes3.ok ? await periodsRes3.json() : []
+            const p3 = marketInfo.marketType === "PTBAE" ? periods3.find(pd => pd.year === marketInfo.periodYear) : null
 
             await fetch("/api/orders", {
                 method: "POST",
@@ -343,7 +345,7 @@ export default function MarketDetailPage() {
                     marketKey: marketKey,
                     tokenId: marketInfo.tokenId,
                     periodYear: marketInfo.periodYear,
-                    ptbaeAddress: p?.tokenAddress,
+                    ptbaeAddress: p3?.tokenAddress,
                     side: orderSide,
                     price: priceWei.toString(),
                     amount: amountWei.toString(),

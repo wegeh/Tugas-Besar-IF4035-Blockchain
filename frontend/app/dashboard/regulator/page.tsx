@@ -1,6 +1,5 @@
 'use client'
 
-import { getCompliancePeriods, startNewPeriod } from "@/app/actions/period-actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -23,41 +22,24 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useContracts } from "@/lib/use-contracts"
 import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
 import { forwarderAddress } from "@/lib/contracts"
 import { Loader2, Plus, ArrowRight } from "lucide-react"
 import Link from 'next/link'
+import { useCompliancePeriods, useCreatePeriod } from "@/hooks"
 
 export default function RegulatorDashboard() {
-    // Contract & State
+    // Contract & Hooks
     const { factory, isReady, getSigner } = useContracts()
-    const [periods, setPeriods] = useState<any[]>([])
-    const [loading, setLoading] = useState(true)
+    const { data: periods = [], isLoading: loading, refetch } = useCompliancePeriods()
+    const createPeriodMutation = useCreatePeriod()
 
     // Dialog State
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [newPeriodYear, setNewPeriodYear] = useState("")
     const [creatingPeriod, setCreatingPeriod] = useState(false)
-
-    // Initial Load
-    useEffect(() => {
-        loadPeriods()
-    }, [])
-
-    async function loadPeriods() {
-        setLoading(true)
-        try {
-            const data = await getCompliancePeriods()
-            setPeriods(data)
-        } catch (error) {
-            console.error(error)
-            toast.error("Failed to load periods")
-        } finally {
-            setLoading(false)
-        }
-    }
 
     // Handlers - Using MetaTx
     async function handleOpenPeriod() {
@@ -95,14 +77,14 @@ export default function RegulatorDashboard() {
                 await provider.waitForTransaction(txResult.txHash)
             }
 
-            // Sync DB
+            // Sync DB via hook mutation
             const tokenAddr = await factory.tokenByPeriod(yearParams)
-            await startNewPeriod(yearParams, tokenAddr)
+            await createPeriodMutation.mutateAsync({ year: yearParams, tokenAddress: tokenAddr })
 
             toast.success(`Period ${yearParams} started!`)
             setIsDialogOpen(false)
             setNewPeriodYear("")
-            loadPeriods()
+            refetch()
         } catch (error: any) {
             console.error("Open Period Error:", error)
             toast.error("Failed to start period: " + (error.shortMessage || error.message || "Unknown error"))
@@ -200,7 +182,7 @@ export default function RegulatorDashboard() {
                                             {period.status}
                                         </span>
                                     </TableCell>
-                                    <TableCell>{new Date(period.createdAt).toLocaleDateString()}</TableCell>
+                                    <TableCell>{period.createdAt ? new Date(period.createdAt).toLocaleDateString() : "-"}</TableCell>
                                     <TableCell className="text-right">
                                         <Link href={`/dashboard/regulator/allocations/${period.year}`}>
                                             <Button variant="secondary" size="sm">

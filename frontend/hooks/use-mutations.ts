@@ -544,3 +544,135 @@ export function useIssueSPE() {
         }
     })
 }
+
+// ============================================================
+// API-Only Mutations (No blockchain, just database)
+// ============================================================
+
+/**
+ * Hook to create a new compliance period in the database.
+ * Called after openPeriod() succeeds on-chain.
+ */
+export function useCreatePeriod() {
+    const queryClient = useQueryClient()
+
+    return useMutation({
+        mutationFn: async ({ year, tokenAddress }: { year: number; tokenAddress: string }) => {
+            const res = await fetch("/api/periods", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ year, tokenAddress })
+            })
+            if (!res.ok) throw new Error("Failed to create period in database")
+            return res.json()
+        },
+        onSuccess: () => {
+            toast.success("Period registered in database")
+            queryClient.invalidateQueries({ queryKey: ["compliance", "periods"] })
+        },
+        onError: (error: Error) => {
+            toast.error("Failed to register period", { description: error.message })
+        }
+    })
+}
+
+/**
+ * Hook to update period status in the database.
+ * Called after setAudit() or finalize() succeeds on-chain.
+ */
+export function useUpdatePeriodStatus() {
+    const queryClient = useQueryClient()
+
+    return useMutation({
+        mutationFn: async ({ year, status }: { year: number; status: "ACTIVE" | "AUDIT" | "ENDED" }) => {
+            const res = await fetch("/api/periods", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ year, status })
+            })
+            if (!res.ok) throw new Error("Failed to update period status")
+            return res.json()
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["compliance", "periods"] })
+        },
+        onError: (error: Error) => {
+            toast.error("Failed to update period status", { description: error.message })
+        }
+    })
+}
+
+/**
+ * Hook to create a new market in the database.
+ */
+export function useCreateMarket() {
+    const queryClient = useQueryClient()
+
+    return useMutation({
+        mutationFn: async ({
+            marketType,
+            periodYear,
+            tokenId,
+            tokenAddress,
+            basePrice
+        }: {
+            marketType: "PTBAE" | "SPE"
+            periodYear?: number
+            tokenId?: string
+            tokenAddress?: string
+            basePrice: string
+        }) => {
+            const res = await fetch("/api/markets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ marketType, periodYear, tokenId, tokenAddress, basePrice })
+            })
+            if (!res.ok) throw new Error("Failed to create market")
+            return res.json()
+        },
+        onSuccess: () => {
+            toast.success("Trading market created!")
+            queryClient.invalidateQueries({ queryKey: ["markets"] })
+        },
+        onError: (error: Error) => {
+            toast.error("Failed to create market", { description: error.message })
+        }
+    })
+}
+
+/**
+ * Hook to record an allocation in the database.
+ * Called after batchAllocate() succeeds on-chain.
+ */
+export function useRecordAllocation() {
+    const queryClient = useQueryClient()
+
+    return useMutation({
+        mutationFn: async ({
+            periodYear,
+            companyWalletAddresses,
+            amount,
+            txHash
+        }: {
+            periodYear: number
+            companyWalletAddresses: string[]
+            amount: string
+            txHash: string
+        }) => {
+            const res = await fetch("/api/allocations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ periodYear, companyWalletAddresses, amount, txHash })
+            })
+            if (!res.ok) throw new Error("Failed to record allocation")
+            return res.json()
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["allocations"] })
+            queryClient.invalidateQueries({ queryKey: ["companies"] })
+        },
+        onError: (error: Error) => {
+            toast.error("Failed to record allocation", { description: error.message })
+        }
+    })
+}

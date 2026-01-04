@@ -1,13 +1,13 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { getCompliancePeriods } from "@/app/actions/period-actions"
 import { getTokenAddressForPeriod, getPeriodStatus, PeriodStatus } from "@/lib/contracts"
 
 export interface CompliancePeriod {
     year: number
     status: "ACTIVE" | "AUDIT" | "ENDED"
     tokenAddress: string
+    createdAt?: string
 }
 
 /**
@@ -18,17 +18,20 @@ export function useCompliancePeriods() {
     return useQuery({
         queryKey: ["compliance", "periods"],
         queryFn: async (): Promise<CompliancePeriod[]> => {
-            // 1. Fetch periods from database (Server Action)
-            const dbPeriods = await getCompliancePeriods()
+            // 1. Fetch periods from API
+            const res = await fetch("/api/periods")
+            if (!res.ok) throw new Error("Failed to fetch periods")
+            const dbPeriods = await res.json()
 
             // 2. Enrich with on-chain token addresses
             const enrichedPeriods = await Promise.all(
-                dbPeriods.map(async (p) => {
+                dbPeriods.map(async (p: { year: number; tokenAddress: string; status: string; createdAt?: string }) => {
                     const tokenAddress = p.tokenAddress || await getTokenAddressForPeriod(p.year)
                     return {
                         year: p.year,
                         status: p.status as "ACTIVE" | "AUDIT" | "ENDED",
-                        tokenAddress: tokenAddress || ""
+                        tokenAddress: tokenAddress || "",
+                        createdAt: p.createdAt
                     }
                 })
             )

@@ -11,51 +11,38 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { getAllocatedCompanies } from "@/app/actions/allocation"
-import { getCompliancePeriods } from "@/app/actions/period-actions"
 import { getComplianceInfo, ComplianceStatus } from "@/lib/contracts"
 import { Loader2 } from "lucide-react"
+import { useCompliancePeriods, useAllocations } from "@/hooks"
 
 export default function VerificationPage() {
-    const [periods, setPeriods] = useState<any[]>([])
+    const { data: periods = [] } = useCompliancePeriods()
     const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null)
-    const [allocated, setAllocated] = useState<any[]>([])
+    const { data: allocations = [], isLoading: allocLoading } = useAllocations(selectedPeriod || 0)
     const [complianceData, setComplianceData] = useState<Map<string, { emission: string, surrendered: string, status: ComplianceStatus }>>(new Map())
     const [loading, setLoading] = useState(true)
 
+    // Auto-select first AUDIT/ENDED period
     useEffect(() => {
-        loadPeriods()
-    }, [])
+        if (periods.length > 0 && !selectedPeriod) {
+            const auditPeriod = periods.find(p => p.status === 'AUDIT' || p.status === 'ENDED')
+            setSelectedPeriod(auditPeriod?.year || periods[0].year)
+        }
+    }, [periods, selectedPeriod])
 
+    // Load compliance data when allocations change
     useEffect(() => {
-        if (selectedPeriod) {
+        if (allocations.length > 0 && selectedPeriod) {
             loadComplianceData()
         }
-    }, [selectedPeriod])
-
-    async function loadPeriods() {
-        try {
-            const data = await getCompliancePeriods()
-            setPeriods(data)
-            if (data.length > 0) {
-                // Select most recent period with AUDIT or ENDED status
-                const auditPeriod = data.find(p => p.status === 'AUDIT' || p.status === 'ENDED')
-                setSelectedPeriod(auditPeriod?.year || data[0].year)
-            }
-        } catch (error) {
-            console.error("Failed to load periods:", error)
-        }
-    }
+    }, [allocations, selectedPeriod])
 
     async function loadComplianceData() {
         if (!selectedPeriod) return
         setLoading(true)
         try {
-            const allocData = await getAllocatedCompanies(selectedPeriod)
-            setAllocated(allocData)
-
             const data = new Map<string, { emission: string, surrendered: string, status: ComplianceStatus }>()
-            for (const alloc of allocData) {
+            for (const alloc of allocations) {
                 try {
                     const info = await getComplianceInfo(selectedPeriod, alloc.company.walletAddress)
                     if (info) {
@@ -138,7 +125,7 @@ export default function VerificationPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {allocated.map(a => {
+                                {allocations.map(a => {
                                     const compliance = complianceData.get(a.company.walletAddress.toLowerCase())
                                     return (
                                         <TableRow key={a.id}>
@@ -167,10 +154,10 @@ export default function VerificationPage() {
                                         </TableRow>
                                     )
                                 })}
-                                {allocated.length === 0 && (
+                                {allocations.length === 0 && (
                                     <TableRow>
                                         <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                                            No companies allocated for this period.
+                                            No companies allocations for this period.
                                         </TableCell>
                                     </TableRow>
                                 )}

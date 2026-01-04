@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { formatUnits } from "ethers"
+import { useMarkets } from "@/hooks"
 
 function formatPrice(weiPrice: string): string {
     try {
@@ -31,30 +32,10 @@ function formatPrice(weiPrice: string): string {
 
 export default function TradingPage() {
     const router = useRouter()
-    const [markets, setMarkets] = useState<any[]>([])
-    const [loading, setLoading] = useState(true)
+    const { data: marketsData, isLoading: loading } = useMarkets()
+    const markets = marketsData || []
     const [searchQuery, setSearchQuery] = useState("")
     const [filterType, setFilterType] = useState<"ALL" | "SPE" | "PTBAE">("ALL")
-
-    useEffect(() => {
-        loadMarkets()
-    }, [])
-
-    async function loadMarkets() {
-        setLoading(true)
-        try {
-            const res = await fetch("/api/markets")
-            if (res.ok) {
-                const data = await res.json()
-                setMarkets(data.markets)
-            }
-        } catch (error) {
-            console.error("Failed to load markets", error)
-            toast.error("Gagal memuat daftar pasar")
-        } finally {
-            setLoading(false)
-        }
-    }
 
     const filteredMarkets = markets.filter(m => {
         if (filterType !== "ALL" && m.marketType !== filterType) return false

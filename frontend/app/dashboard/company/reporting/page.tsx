@@ -12,7 +12,6 @@ import { toast } from "sonner"
 import { createMetaTx, sendMetaTx } from "@/lib/meta-tx"
 import { getSigner, forwarderAddress, getSubmissionContract, getUserSubmissions, type SubmissionData } from "@/lib/contracts"
 import { uploadToIPFS } from "@/lib/ipfs"
-import { getCompliancePeriods } from "@/app/actions/period-actions"
 import {
     Table,
     TableBody,
@@ -22,6 +21,7 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { useCompliancePeriods } from "@/hooks"
 
 interface PeriodAllocation {
     year: number
@@ -30,29 +30,21 @@ interface PeriodAllocation {
 
 export default function ReportingPage() {
     const { address } = useConnection()
+    const { data: periodsData = [] } = useCompliancePeriods()
     const [loading, setLoading] = useState(false)
     const [reportPeriod, setReportPeriod] = useState("")
     const [reportFile, setReportFile] = useState<File | null>(null)
-    const [periods, setPeriods] = useState<PeriodAllocation[]>([])
     const [submissions, setSubmissions] = useState<SubmissionData[]>([])
     const [loadingHistory, setLoadingHistory] = useState(false)
 
     const ipfsGateway = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || "http://127.0.0.1:8080/ipfs"
 
     useEffect(() => {
-        async function loadPeriods() {
-            const p = await getCompliancePeriods()
-            setPeriods(p)
-        }
-        loadPeriods()
-    }, [])
-
-    useEffect(() => {
         async function loadSubmissionHistory() {
-            if (address && periods.length > 0) {
+            if (address && periodsData.length > 0) {
                 setLoadingHistory(true)
                 try {
-                    const periodYears = periods.map(p => p.year)
+                    const periodYears = periodsData.map(p => p.year)
                     const userSubmissions = await getUserSubmissions(address, periodYears)
                     setSubmissions(userSubmissions)
                 } catch (error) {
@@ -63,7 +55,7 @@ export default function ReportingPage() {
             }
         }
         loadSubmissionHistory()
-    }, [address, periods])
+    }, [address, periodsData])
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -105,8 +97,8 @@ export default function ReportingPage() {
             setReportPeriod("")
 
             // Refresh submission history
-            if (address && periods.length > 0) {
-                const periodYears = periods.map(p => p.year)
+            if (address && periodsData.length > 0) {
+                const periodYears = periodsData.map(p => p.year)
                 const userSubmissions = await getUserSubmissions(address, periodYears)
                 setSubmissions(userSubmissions)
             }
@@ -156,13 +148,13 @@ export default function ReportingPage() {
                             onChange={(e) => setReportPeriod(e.target.value)}
                         >
                             <option value="">-- Select Period --</option>
-                            {periods.filter(p => p.status === 'AUDIT').map(p => (
+                            {periodsData.filter(p => p.status === 'AUDIT').map(p => (
                                 <option key={p.year} value={p.year}>
                                     Period {p.year} (AUDIT Phase)
                                 </option>
                             ))}
-                            {periods.filter(p => p.status === 'AUDIT').length === 0 && (
-                                <option disabled>No periods in AUDIT phase</option>
+                            {periodsData.filter(p => p.status === 'AUDIT').length === 0 && (
+                                <option disabled>No periodsData in AUDIT phase</option>
                             )}
                         </select>
                     </div>
@@ -183,7 +175,7 @@ export default function ReportingPage() {
 
                     <Button
                         onClick={handleSubmitReport}
-                        disabled={loading || !reportPeriod || !reportFile || periods.filter(p => p.status === 'AUDIT').length === 0}
+                        disabled={loading || !reportPeriod || !reportFile || periodsData.filter(p => p.status === 'AUDIT').length === 0}
                     >
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         <Send className="mr-2 h-4 w-4" />
