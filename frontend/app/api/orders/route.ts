@@ -2,10 +2,6 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { OrderStatus, OrderSide, MarketType, AuctionStatus } from "@/src/generated/prisma/enums"
 
-/**
- * GET /api/orders
- * Fetch orders for a specific trader
- */
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const walletAddress = searchParams.get("walletAddress")
@@ -69,10 +65,6 @@ export async function GET(request: Request) {
     }
 }
 
-/**
- * POST /api/orders
- * Record a new order (before or after on-chain creation)
- */
 export async function POST(request: Request) {
     try {
         const body = await request.json()
@@ -94,7 +86,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
         }
 
-        // Find or create user
         let user = await prisma.user.findUnique({
             where: { walletAddress: walletAddress.toLowerCase() },
         })
@@ -108,7 +99,6 @@ export async function POST(request: Request) {
             })
         }
 
-        // Check if market is valid and not expired
         const market = await prisma.market.findUnique({
             where: { marketKey }
         })
@@ -125,7 +115,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Market has expired" }, { status: 400 })
         }
 
-        // Dynamic PTBAE Expiration Check (CurrentYear > Period + 2)
         if (market.marketType === "PTBAE" && market.periodYear) {
             const currentYear = new Date().getFullYear()
             if (currentYear > market.periodYear + 2) {
@@ -135,7 +124,6 @@ export async function POST(request: Request) {
             }
         }
 
-        // Find current open auction window for this market
         const currentWindow = await prisma.auctionWindow.findFirst({
             where: {
                 marketKey,
@@ -143,7 +131,6 @@ export async function POST(request: Request) {
             }
         })
 
-        // Create order
         const order = await prisma.order.create({
             data: {
                 onChainId: onChainId ? BigInt(onChainId) : null,

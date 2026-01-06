@@ -2,10 +2,6 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { OrderStatus } from "@/src/generated/prisma/enums"
 
-/**
- * GET /api/trades
- * Fetch trade history for a market or user
- */
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const marketKey = searchParams.get("marketKey")
@@ -37,18 +33,14 @@ export async function GET(request: Request) {
             include: {
                 buyOrder: {
                     include: {
-                        trader: {
-                            select: { walletAddress: true, companyName: true },
-                        },
-                    },
+                        trader: { select: { walletAddress: true, companyName: true } }
+                    }
                 },
                 sellOrder: {
                     include: {
-                        trader: {
-                            select: { walletAddress: true, companyName: true },
-                        },
-                    },
-                },
+                        trader: { select: { walletAddress: true, companyName: true } }
+                    }
+                }
             },
             orderBy: { executedAt: "desc" },
             take: limit,
@@ -72,10 +64,6 @@ export async function GET(request: Request) {
     }
 }
 
-/**
- * POST /api/trades
- * Record an executed trade after on-chain settlement
- */
 export async function POST(request: Request) {
     try {
         const body = await request.json()
@@ -85,7 +73,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
         }
 
-        // Get orders
         const buyOrder = await prisma.order.findUnique({ where: { id: buyOrderId } })
         const sellOrder = await prisma.order.findUnique({ where: { id: sellOrderId } })
 
@@ -93,9 +80,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Order not found" }, { status: 404 })
         }
 
-        // Update orders and create trade in transaction
         const result = await prisma.$transaction(async (tx) => {
-            // Update buy order
             const newBuyFilled = BigInt(buyOrder.filledAmount) + BigInt(amount)
             const buyStatus = newBuyFilled >= BigInt(buyOrder.amount)
                 ? OrderStatus.FILLED
@@ -103,13 +88,9 @@ export async function POST(request: Request) {
 
             await tx.order.update({
                 where: { id: buyOrderId },
-                data: {
-                    filledAmount: newBuyFilled.toString(),
-                    status: buyStatus,
-                },
+                data: { filledAmount: newBuyFilled.toString(), status: buyStatus }
             })
 
-            // Update sell order
             const newSellFilled = BigInt(sellOrder.filledAmount) + BigInt(amount)
             const sellStatus = newSellFilled >= BigInt(sellOrder.amount)
                 ? OrderStatus.FILLED
@@ -117,22 +98,11 @@ export async function POST(request: Request) {
 
             await tx.order.update({
                 where: { id: sellOrderId },
-                data: {
-                    filledAmount: newSellFilled.toString(),
-                    status: sellStatus,
-                },
+                data: { filledAmount: newSellFilled.toString(), status: sellStatus }
             })
 
-            // Create trade record
             const trade = await tx.trade.create({
-                data: {
-                    marketKey: buyOrder.marketKey,
-                    buyOrderId,
-                    sellOrderId,
-                    price,
-                    amount,
-                    txHash,
-                },
+                data: { marketKey: buyOrder.marketKey, buyOrderId, sellOrderId, price, amount, txHash }
             })
 
             return trade
@@ -140,10 +110,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json({
             success: true,
-            trade: {
-                id: result.id,
-                txHash: result.txHash,
-            },
+            trade: { id: result.id, txHash: result.txHash }
         })
     } catch (error) {
         console.error("Trade recording error:", error)

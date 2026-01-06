@@ -2,11 +2,6 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { OrderStatus, MarketType } from "@/src/generated/prisma/enums"
 
-/**
- * GET /api/orderbook
- * Fetch order book for a specific market
- * Query params: marketType (SPE|PTBAE), tokenId (for SPE), periodYear (for PTBAE)
- */
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const marketType = searchParams.get("marketType") as MarketType | null
@@ -17,7 +12,6 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "marketType required" }, { status: 400 })
     }
 
-    // Build market key based on type
     let marketKey: string
     if (marketType === "SPE") {
         if (!tokenId) {
@@ -32,32 +26,22 @@ export async function GET(request: Request) {
     }
 
     try {
-        // Fetch open orders for this market
         const orders = await prisma.order.findMany({
-            where: {
-                marketKey,
-                status: OrderStatus.OPEN,
-            },
+            where: { marketKey, status: OrderStatus.OPEN },
             include: {
                 trader: {
-                    select: {
-                        walletAddress: true,
-                        companyName: true,
-                    },
-                },
+                    select: { walletAddress: true, companyName: true }
+                }
             },
-            orderBy: [
-                { price: "desc" }, // Higher price first for bids
-            ],
+            orderBy: [{ price: "desc" }]
         })
 
-        // Separate bids and asks
         const bids = orders
             .filter((o) => o.side === "BID")
-            .sort((a, b) => Number(BigInt(b.price) - BigInt(a.price))) // Highest first
+            .sort((a, b) => Number(BigInt(b.price) - BigInt(a.price)))
         const asks = orders
             .filter((o) => o.side === "ASK")
-            .sort((a, b) => Number(BigInt(a.price) - BigInt(b.price))) // Lowest first
+            .sort((a, b) => Number(BigInt(a.price) - BigInt(b.price)))
 
         return NextResponse.json({
             marketKey,

@@ -15,9 +15,9 @@ services:
       --http.corsdomain="*"
       --http.vhosts="*"
       --allow-insecure-unlock
-      --unlock "0xAcf2104b946dc9D4cEf0F20f9c14Ef80A75E3076,0x1F9314416DdA450d81b1474BC5Ce0D92dd051184"
+      --unlock "0x378A7B0ce51e7e25Fd398453E0fB155110113f1d,0x40cF2b1489e543F04fCe4E184f04AECD2Cfea329"
       --password /data/password.txt
-      --miner.etherbase "0xAcf2104b946dc9D4cEf0F20f9c14Ef80A75E3076"
+      --miner.etherbase "0x378A7B0ce51e7e25Fd398453E0fB155110113f1d"
       --mine
       --syncmode full
       --ipcdisable

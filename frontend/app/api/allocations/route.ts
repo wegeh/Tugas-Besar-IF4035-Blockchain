@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { Role } from "@/src/generated/prisma/client"
 
-// GET /api/allocations?year=X - Get allocations for a specific year
 export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url)
@@ -39,7 +38,6 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// POST /api/allocations - Record new allocation(s)
 export async function POST(request: NextRequest) {
     try {
         const { periodYear, companyWalletAddresses, amount, txHash } = await request.json()
@@ -50,9 +48,6 @@ export async function POST(request: NextRequest) {
             }, { status: 400 })
         }
 
-        console.log(`Recording allocation for year ${periodYear} to ${companyWalletAddresses.length} companies`)
-
-        // Resolve wallet addresses to User IDs
         const companies = await prisma.user.findMany({
             where: {
                 walletAddress: { in: companyWalletAddresses },
@@ -67,7 +62,6 @@ export async function POST(request: NextRequest) {
             }, { status: 404 })
         }
 
-        // Batch create allocations
         const operations = companies.map(company =>
             prisma.allocation.create({
                 data: {

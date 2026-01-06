@@ -18,16 +18,12 @@ export const ForwardRequest = [
     { name: "data", type: "bytes" },
 ]
 
-// Local nonce cache to prevent mismatch on consecutive transactions
 const nonceCache: Map<string, { nonce: bigint; timestamp: number }> = new Map()
-const NONCE_CACHE_TTL = 30000 // 30 seconds - invalidate cache after this
+const NONCE_CACHE_TTL = 30000
 
 function getMetaTxTypeData(chainId: number, verifyingContract: string) {
     return {
-        types: {
-            EIP712Domain,
-            ForwardRequest,
-        },
+        types: { EIP712Domain, ForwardRequest },
         domain: {
             name: "Forwarder",
             version: "1",
@@ -41,8 +37,6 @@ function getMetaTxTypeData(chainId: number, verifyingContract: string) {
 async function signMetaTxRequest(signer: ethers.Signer, forwarder: any, input: any, chainId: number, gasLimit: number) {
     const request = await buildRequest(forwarder, input, gasLimit)
     const toSign = getMetaTxTypeData(chainId, await forwarder.getAddress())
-
-    // Use _signTypedData if available (ethers v6), otherwise fallback or metamask direct
     const signature = await signer.signTypedData(toSign.domain, { ForwardRequest }, request)
     return { signature, request }
 }
@@ -56,33 +50,24 @@ async function buildRequest(forwarder: any, input: any, gasLimit: number = 30000
     const now = Date.now()
 
     if (cached && (now - cached.timestamp) < NONCE_CACHE_TTL) {
-        // Use cached nonce + 1
         nonce = cached.nonce + BigInt(1)
-        console.log(`[MetaTx] Using cached nonce + 1: ${nonce}`)
     } else {
-        // Fetch from chain
         nonce = await forwarder.nonces(input.from)
-        console.log(`[MetaTx] Fetched on-chain nonce: ${nonce}`)
     }
 
-    // Update cache
     nonceCache.set(cacheKey, { nonce, timestamp: now })
 
     return {
         from: input.from,
         to: input.to,
         value: 0,
-        gas: gasLimit, // Configurable, default 3M. Use higher (5M) for contract deploy operations
+        gas: gasLimit,
         nonce: nonce,
-        deadline: Math.floor(Date.now() / 1000) + 3600, // 1 hour validity
+        deadline: Math.floor(Date.now() / 1000) + 3600,
         data: input.data,
     }
 }
 
-/**
- * Create a meta-transaction request and signature
- * @param gasLimit - Optional gas limit for the meta-tx (default 3M, use 5M for deploy operations like openPeriod)
- */
 export async function createMetaTx(
     signer: ethers.Signer,
     forwarderAddress: string,
@@ -94,27 +79,17 @@ export async function createMetaTx(
     const network = await signer.provider?.getNetwork()
     const chainId = Number(network?.chainId || 1515)
 
-    // Allow both 1515 (Configured) and 31337 (Hardhat Default)
-    // If user is on 31337, we sign for 31337. If on 1515, we sign for 1515.
-    // The node MUST match what we sign for.
     const ALLOWED_CHAINS = [1515, 31337]
     if (!ALLOWED_CHAINS.includes(chainId)) {
-        throw new Error(`Wrong Network. Please switch Metamask to Localhost (1515 or 31337). Current: ${chainId}`)
+        throw new Error(`Wrong Network. Please switch to Localhost (1515 or 31337). Current: ${chainId}`)
     }
 
     const provider = signer.provider
     const forwarder = new ethers.Contract(forwarderAddress, ForwarderABI.abi, provider)
 
-    // Build request
-    const request = {
-        from,
-        to: toContract,
-        data,
-    }
-
+    const request = { from, to: toContract, data }
     const { signature, request: signedReq } = await signMetaTxRequest(signer, forwarder, request, chainId, gasLimit)
 
-    // JSON serializable request (BigInt issues handling)
     const jsonReq = {
         from: signedReq.from,
         to: signedReq.to,

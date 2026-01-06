@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-// GET /api/periods - Get all compliance periods
 export async function GET() {
     try {
         const periods = await prisma.compliancePeriod.findMany({
@@ -14,7 +13,6 @@ export async function GET() {
     }
 }
 
-// POST /api/periods - Create new period
 export async function POST(request: NextRequest) {
     try {
         const { year, tokenAddress } = await request.json()
@@ -24,14 +22,9 @@ export async function POST(request: NextRequest) {
         }
 
         await prisma.compliancePeriod.create({
-            data: {
-                year,
-                tokenAddress,
-                status: "ACTIVE"
-            }
+            data: { year, tokenAddress, status: "ACTIVE" }
         })
 
-        // Auto-close PTBAE markets expired by 2-year rule
         const thresholdYear = year - 2
         await prisma.market.updateMany({
             where: {
@@ -49,7 +42,6 @@ export async function POST(request: NextRequest) {
     }
 }
 
-// PATCH /api/periods - Update period status
 export async function PATCH(request: NextRequest) {
     try {
         const { year, status } = await request.json()
@@ -71,10 +63,8 @@ export async function PATCH(request: NextRequest) {
                     where: { year },
                     data: { status }
                 })
-                console.log(`[API] Period ${year} status updated to ${status}`)
                 return NextResponse.json({ success: true })
             } catch (error) {
-                console.error(`[Attempt ${attempt + 1}] Failed:`, error)
                 attempt++
                 if (attempt === MAX_RETRIES) {
                     return NextResponse.json({ error: "Failed after retries" }, { status: 500 })

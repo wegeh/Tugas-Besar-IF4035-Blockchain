@@ -2,10 +2,6 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { MarketType } from "@/src/generated/prisma/enums"
 
-/**
- * GET /api/markets
- * List all markets with base price and last clearing price
- */
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const marketType = searchParams.get("marketType") as MarketType | null
@@ -27,10 +23,6 @@ export async function GET(request: Request) {
                 }
             }
         })
-
-        // PTBAE markets are created when Finalized. 
-        // So if it exists in DB, it is valid to display. 
-        // We only check for Expiration (active for 2 years).
 
         return NextResponse.json({
             markets: markets.map(m => ({
@@ -61,10 +53,6 @@ export async function GET(request: Request) {
     }
 }
 
-/**
- * POST /api/markets
- * Create a new market with base price (one-time)
- */
 export async function POST(request: Request) {
     try {
         const body = await request.json()
@@ -74,7 +62,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "marketType and basePrice are required" }, { status: 400 })
         }
 
-        // Generate market key (Human Readable)
         let marketKey: string
         if (marketType === "SPE") {
             if (!tokenId) {
@@ -88,7 +75,6 @@ export async function POST(request: Request) {
             marketKey = `PTBAE-${periodYear}`
         }
 
-        // Check if market already exists
         const existingMarket = await prisma.market.findUnique({
             where: { marketKey }
         })
@@ -97,7 +83,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Market already exists" }, { status: 409 })
         }
 
-        // Create market and first auction window
         const now = new Date()
         const endTime = new Date(now.getTime() + auctionDurationMinutes * 60 * 1000)
 

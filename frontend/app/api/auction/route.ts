@@ -2,10 +2,6 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { AuctionStatus, OrderStatus, OrderSide } from "@/src/generated/prisma/enums"
 
-/**
- * GET /api/auction
- * Get current auction window status for a market
- */
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const marketKey = searchParams.get("marketKey")
@@ -46,14 +42,12 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "No auction window found" }, { status: 404 })
         }
 
-        // Calculate order book summary
         const bids = currentWindow.orders.filter(o => o.side === OrderSide.BID)
         const asks = currentWindow.orders.filter(o => o.side === OrderSide.ASK)
 
         const totalBidVolume = bids.reduce((sum, o) => sum + BigInt(o.amount) - BigInt(o.filledAmount), BigInt(0))
         const totalAskVolume = asks.reduce((sum, o) => sum + BigInt(o.amount) - BigInt(o.filledAmount), BigInt(0))
 
-        // Calculate time remaining
         const now = new Date()
         const endTime = new Date(currentWindow.endTime)
         const timeRemainingMs = Math.max(0, endTime.getTime() - now.getTime())
@@ -93,10 +87,6 @@ export async function GET(request: Request) {
     }
 }
 
-/**
- * POST /api/auction/close
- * Close current auction window and calculate clearing price
- */
 export async function POST(request: Request) {
     try {
         const body = await request.json()
@@ -116,13 +106,10 @@ export async function POST(request: Request) {
 }
 
 export async function closeAuctionWindow(marketKey: string) {
-    // Get current open window
     const window = await prisma.auctionWindow.findFirst({
         where: { marketKey, status: AuctionStatus.OPEN },
         include: {
-            orders: {
-                where: { status: OrderStatus.OPEN }
-            }
+            orders: { where: { status: OrderStatus.OPEN } }
         }
     })
 
@@ -130,10 +117,8 @@ export async function closeAuctionWindow(marketKey: string) {
         return NextResponse.json({ error: "No open auction window found" }, { status: 404 })
     }
 
-    // Calculate clearing price
     const { clearingPrice, matchedVolume, matches } = calculateClearingPrice(window.orders)
 
-    // Update window status to CLOSED
     const updatedWindow = await prisma.auctionWindow.update({
         where: { id: window.id },
         data: {
@@ -161,7 +146,6 @@ export async function closeAuctionWindow(marketKey: string) {
 }
 
 export async function openNewAuctionWindow(marketKey: string, durationMinutes: number) {
-    // Get last window number and market details
     const lastWindow = await prisma.auctionWindow.findFirst({
         where: { marketKey },
         orderBy: { windowNumber: "desc" },
@@ -169,7 +153,6 @@ export async function openNewAuctionWindow(marketKey: string, durationMinutes: n
     })
 
     if (!lastWindow || !lastWindow.market) {
-        // If no windows exist, fetch market directly
         const market = await prisma.market.findUnique({ where: { marketKey } })
         if (!market) return NextResponse.json({ error: "Market not found" }, { status: 404 })
 
@@ -220,15 +203,6 @@ interface Match {
     amount: bigint
 }
 
-/**
- * Calculate clearing price using single-price auction algorithm
- * 1. Get all candidate prices from BID/ASK
- * 2. For each price P:
- *    - Demand(P) = sum of BID qty where bid.price >= P
- *    - Supply(P) = sum of ASK qty where ask.price <= P
- *    - Exec(P) = min(Demand, Supply)
- * 3. Choose P with max Exec(P) as clearing price
- */
 function calculateClearingPrice(orders: OrderData[]): {
     clearingPrice: bigint | null
     matchedVolume: bigint
@@ -242,7 +216,7 @@ function calculateClearingPrice(orders: OrderData[]): {
             remaining: BigInt(o.amount) - BigInt(o.filledAmount)
         }))
         .filter(o => o.remaining > 0)
-        .sort((a, b) => (b.price > a.price ? 1 : -1)) // Highest price first
+        .sort((a, b) => (b.price > a.price ? 1 : -1))
 
     const asks = orders
         .filter(o => o.side === OrderSide.ASK)
@@ -252,13 +226,12 @@ function calculateClearingPrice(orders: OrderData[]): {
             remaining: BigInt(o.amount) - BigInt(o.filledAmount)
         }))
         .filter(o => o.remaining > 0)
-        .sort((a, b) => (a.price > b.price ? 1 : -1)) // Lowest price first
+        .sort((a, b) => (a.price > b.price ? 1 : -1))
 
     if (bids.length === 0 || asks.length === 0) {
         return { clearingPrice: null, matchedVolume: BigInt(0), matches: [] }
     }
 
-    // Get all candidate prices
     const candidatePrices = [...new Set([
         ...bids.map(b => b.price),
         ...asks.map(a => a.price)
@@ -268,17 +241,14 @@ function calculateClearingPrice(orders: OrderData[]): {
     let maxExec = BigInt(0)
 
     for (const P of candidatePrices) {
-        // Demand(P) = sum of BID qty where bid.price >= P
         const demand = bids
             .filter(b => b.price >= P)
             .reduce((sum, b) => sum + b.remaining, BigInt(0))
 
-        // Supply(P) = sum of ASK qty where ask.price <= P
         const supply = asks
             .filter(a => a.price <= P)
             .reduce((sum, a) => sum + a.remaining, BigInt(0))
 
-        // Exec(P) = min(Demand, Supply)
         const exec = demand < supply ? demand : supply
 
         if (exec > maxExec) {
@@ -291,7 +261,6 @@ function calculateClearingPrice(orders: OrderData[]): {
         return { clearingPrice: null, matchedVolume: BigInt(0), matches: [] }
     }
 
-    // Generate matches at clearing price
     const matches: Match[] = []
     const eligibleBids = bids.filter(b => b.price >= bestPrice).map(b => ({ ...b }))
     const eligibleAsks = asks.filter(a => a.price <= bestPrice).map(a => ({ ...a }))
